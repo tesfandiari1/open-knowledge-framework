@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "okf-marketplace",
+  "description": "Skill marketplace for the OKF knowledge-base plugin.",
+  "owner": {
+    "name": "tristin",
+    "email": "tristin@uniwise.ai"
+  },
+  "plugins": [
+    {
+      "name": "okf",
+      "description": "Scrape documentation into a multi-topic OKF knowledge base and keep it indexed. Skills: okf:topic, okf:refresh, okf:query, okf:lint.",
+      "author": { "name": "tristin" },
+      "category": "productivity",
+      "source": "./plugins/okf"
+    }
+  ]
+}

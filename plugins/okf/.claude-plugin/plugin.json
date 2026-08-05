@@ -1,0 +1,8 @@
+{
+  "name": "okf",
+  "version": "0.1.0",
+  "description": "Build and maintain a multi-topic OKF knowledge base from scraped docs. Use when adding documentation for a topic (tauri, premiere-pro, …), scraping sites with firecrawl into the KB, or querying/linting what's been collected.",
+  "author": { "name": "tristin", "email": "tristin@uniwise.ai" },
+  "license": "MIT",
+  "keywords": ["okf", "knowledge-base", "firecrawl", "documentation", "scraping", "wiki"]
+}
