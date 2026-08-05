@@ -1,6 +1,6 @@
 {
   "name": "okf-marketplace",
-  "description": "Skill marketplace for the OKF knowledge-base plugin.",
+  "description": "Marketplace for the OKF plugin — the Claude Code runtime of the Open Knowledge Framework for agentic knowledge bases.",
   "owner": {
     "name": "tristin",
     "email": "tristin@uniwise.ai"
@@ -8,10 +8,10 @@
   "plugins": [
     {
       "name": "okf",
-      "description": "Scrape documentation into a multi-topic OKF knowledge base and keep it indexed. Skills: okf:topic, okf:refresh, okf:query, okf:lint.",
+      "description": "Build and operate LLM-maintained knowledge bases in the vendor-neutral Open Knowledge Format. Skills: okf:topic, okf:refresh, okf:query, okf:lint.",
       "author": { "name": "tristin" },
       "category": "productivity",
-      "source": "./plugins/okf"
+      "source": "."
     }
   ]
 }
