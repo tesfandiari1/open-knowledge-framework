@@ -1,63 +1,92 @@
 # OKF Marketplace
 
-A Claude Code skill marketplace. It ships the **okf** plugin, which turns scraped documentation into a searchable, multi-topic knowledge base you can query without leaving your session.
+A Claude Code plugin marketplace for the **okf** plugin: turn any documentation site into a local, searchable knowledge base that Claude builds, queries, and maintains for you.
+
+Point it at a doc site and one prompt later you have clean, frontmattered Markdown on disk, cataloged and ready to cite. Ask a question and Claude answers from the collected docs with exact source citations, not from memory.
+
+## Prerequisites
+
+- [Claude Code](https://claude.com/claude-code)
+- [Firecrawl CLI](https://www.firecrawl.dev), installed and authenticated (`firecrawl --status` should succeed) — used by `okf:topic` and `okf:refresh`
+- `jq` and `python3` on your PATH (PyYAML optional, for stricter lint checks)
 
 ## Installation
 
-Add the marketplace, then install the plugin:
+In Claude Code:
 
 ```
-/plugin marketplace add /Users/tristin/code/okf
+/plugin marketplace add <your-github-user>/okf
 /plugin install okf@okf-marketplace
 ```
 
-Once the repo is on GitHub, others can add it with:
+From a local clone instead:
 
 ```
-/plugin marketplace add <owner>/okf
+/plugin marketplace add /path/to/okf
+/plugin install okf@okf-marketplace
 ```
 
-## What the okf plugin does
+## Quick start
 
-Point it at a doc site and it builds a topic folder of clean, frontmattered Markdown with a light navigation wiki on top. Later you can query it, refresh it, and audit it.
+```
+> Scrape the Bun docs into my knowledge base
+```
+
+Claude scaffolds a topic, maps the site, pauses so you can trim the URL list, scrapes, and indexes. Then:
+
+```
+> What do the bun docs say about test mocking?
+```
+
+Claude greps the topic, reads only the relevant pages, and answers with citations.
+
+## The skills
 
 | Skill | What it does | Say something like |
 |---|---|---|
 | `okf:topic` | Scrape one or more sites into a new topic | "Scrape the Bun docs into my knowledge base" |
-| `okf:refresh` | Re-scrape an existing topic and report what changed | "Update the tauri docs" |
-| `okf:query` | Answer a question from the collected docs | "What do the tauri docs say about IPC?" |
-| `okf:lint` | Health-check a topic and list gaps | "Is the premiere-pro topic OKF-conformant?" |
+| `okf:refresh` | Re-scrape an existing topic and report the delta | "Update the tauri docs" |
+| `okf:query` | Answer from the collected docs, with citations | "What do the tauri docs say about IPC?" |
+| `okf:lint` | Audit a topic and apply mechanical fixes | "Check the knowledge base for stale pages" |
 
-Scraping runs on [Firecrawl](https://firecrawl.dev), so the `firecrawl` CLI must be installed and authenticated for `okf:topic` and `okf:refresh`.
+## How it works
+
+Your knowledge base is a plain data directory, created on first use at `~/code/knowledge-base`. Set `OKF_KB_ROOT` to put it somewhere else. Each topic is a self-contained [OKF](plugins/okf/okf-pack/) space:
+
+```
+<knowledge base>/
+├── okf-pack/           # OKF format docs, seeded from the plugin
+└── topics/
+    └── <topic>/
+        ├── AGENTS.md   # per-topic conventions
+        ├── raw/        # immutable scraped docs + SOURCES.md scrape config
+        └── wiki/       # light catalog: index.md + log.md (+ on-demand concepts)
+```
+
+Two design rules keep it cheap:
+
+- **Raw docs are the product.** Scraping and indexing are mechanical and spend almost no tokens. Claude does not rewrite pages into summaries unless you ask.
+- **Scraping is resumable.** Re-runs skip unchanged pages, so a refresh only spends Firecrawl credits on what changed.
+
+The format itself (the [okf-pack](plugins/okf/okf-pack/) reference docs) is vendor-neutral Markdown — the knowledge base stays useful outside Claude Code.
 
 ## Repository layout
 
 ```
-.claude-plugin/
-  marketplace.json      Marketplace manifest
-plugins/
-  okf/
-    .claude-plugin/
-      plugin.json       Plugin manifest
-    skills/
-      topic/SKILL.md    Add a topic
-      refresh/SKILL.md  Re-scrape a topic
-      query/SKILL.md    Query the knowledge base
-      lint/SKILL.md     Audit a topic
+.claude-plugin/marketplace.json    Marketplace manifest
+plugins/okf/
+  .claude-plugin/plugin.json       Plugin manifest
+  skills/                          topic, refresh, query, lint
+  scripts/                         Firecrawl ingestion pipeline
+  okf-pack/                        OKF format spec + authoring docs
 ```
 
-## Adding a skill
+## Extending
 
-1. Create `plugins/okf/skills/<skill-name>/SKILL.md` with a kebab-case folder name.
-2. Give the frontmatter a `name` matching the folder and a `description` that states what the skill does and when to use it, with trigger phrases users would actually say.
-3. Keep SKILL.md focused. Move long reference material to a `references/` folder inside the skill.
-4. Reinstall or update the plugin, then test that the skill triggers on obvious and paraphrased requests but not on unrelated ones.
+**Add a skill:** create `plugins/okf/skills/<name>/SKILL.md` (kebab-case folder). The frontmatter `name` must match the folder, and the `description` must say what the skill does and when to use it, with phrases users would actually say. Keep SKILL.md focused; put long reference material in the skill's `references/` folder or `okf-pack/`.
 
-## Adding a plugin
-
-1. Create `plugins/<plugin-name>/` with a `.claude-plugin/plugin.json` and a `skills/` folder.
-2. Register it in `.claude-plugin/marketplace.json` under `plugins` with `"source": "./plugins/<plugin-name>"`.
+**Add a plugin:** create `plugins/<name>/` with its own `.claude-plugin/plugin.json` and `skills/`, then register it in `.claude-plugin/marketplace.json` with `"source": "./plugins/<name>"`.
 
 ## License
 
-MIT
+[MIT](LICENSE)

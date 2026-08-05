@@ -1,5 +1,4 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "okf-marketplace",
   "description": "Skill marketplace for the OKF knowledge-base plugin.",
   "owner": {

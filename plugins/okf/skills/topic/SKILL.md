@@ -2,11 +2,8 @@
 name: topic
 description: |
   Add documentation for a topic to the OKF knowledge base: scaffold a topic folder, scrape one or more sites with Firecrawl into clean frontmattered Markdown, and refresh the light navigation wiki. Use when the user gives URLs or a doc site and wants them collected for reference, e.g. "scrape the Bun docs into my knowledge base", "add Svelte 5 docs as a topic", "gather these pages for later", or "create a new topic from a URL". Pairs with the firecrawl skill (the scraping engine) and the okf:refresh / okf:query / okf:lint skills.
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
+license: MIT
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # okf:topic — scrape docs into a new knowledge-base topic
@@ -17,9 +14,14 @@ KB's own pipeline scripts; it does not reinvent scraping.
 
 ## Critical context
 
+- **Plugin root:** the pipeline scripts and OKF reference docs ship with this
+  plugin. `OKF="${CLAUDE_PLUGIN_ROOT}"`; if that variable is unset, use the plugin
+  directory this skill loaded from (two levels up from this SKILL.md).
 - **Knowledge base root:** `${OKF_KB_ROOT:-$HOME/code/knowledge-base}`. Resolve it
-  once at the start: `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. If `$KB` does
-  not exist, stop and ask the user where the KB lives.
+  once at the start: `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. The KB is a
+  plain data directory. If `$KB` does not exist yet, confirm the location with the
+  user (they can set `OKF_KB_ROOT` to move it) — `new_topic.sh` then creates and
+  seeds it, including a copy of `okf-pack/`.
 - **Light wiki by default.** The scraped Markdown is the product. Do **not** read
   and rewrite scraped pages into OKF concept documents — a topic can be hundreds of
   pages and that burns tokens for little gain. The wiki layer is just a mechanical
@@ -30,25 +32,28 @@ KB's own pipeline scripts; it does not reinvent scraping.
   the page's own `metadata.description` (heuristic fallback only when absent) and strips
   docs-platform chrome (e.g. Mintlify llms.txt blockquotes, skip-links, anchor permalinks).
   Do not hand-edit scraped Markdown; if a new site leaks chrome, add a rule in
-  `scripts/firecrawl_to_md.py`, never per-topic.
+  the plugin's `scripts/firecrawl_to_md.py`, never per-topic.
 - Each topic is one OKF space: `topics/<slug>/{AGENTS.md, raw/, wiki/}`. See
-  `$KB/README.md` for the full model.
+  `$OKF/okf-pack/okf-space.md` for the full model.
 
 ## Workflow
 
 ### Step 1 — Resolve KB and topic slug
 ```bash
+OKF="${CLAUDE_PLUGIN_ROOT}"   # plugin root; if unset, use this skill's plugin directory
 KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"
-[ -d "$KB" ] || { echo "KB not found at $KB — ask the user"; }
+[ -d "$KB" ] || echo "KB will be created at $KB — confirm with the user first"
 ```
 Pick a short kebab-case `slug` for the topic (e.g. `bun`, `svelte-5`). If
 `topics/<slug>/` already exists, this is a refresh — use **okf:refresh** instead.
 
 ### Step 2 — Scaffold the topic
 ```bash
-"$KB/scripts/new_topic.sh" <slug>
+"$OKF/scripts/new_topic.sh" <slug>
 ```
 Creates `topics/<slug>/` with `raw/SOURCES.md`, a seeded `wiki/`, and `AGENTS.md`.
+On a brand-new KB it also creates the KB root, a `.gitignore` for the scrape
+cache, and a copy of `okf-pack/`.
 
 ### Step 3 — Discover & curate URLs (per site)
 **Optional pre-seed.** If you skip this step, Step 5's `scrape_topic.sh` runs
@@ -80,7 +85,7 @@ Add one **TAB-separated** row per site inside the ```` ```sources ```` block of
 
 ### Step 5 — Scrape
 ```bash
-"$KB/scripts/scrape_topic.sh" <slug>
+"$OKF/scripts/scrape_topic.sh" <slug>
 ```
 **Background it for more than ~20 URLs.** At ~2–3s/page and 5 concurrent, a large
 topic easily exceeds a foreground command's time limit. Run it detached and poll the
@@ -118,8 +123,8 @@ User: "Scrape the Bun docs into my knowledge base."
 
 ## Troubleshooting
 
-- **`KB not found`** — set `OKF_KB_ROOT` or pass the right path; the KB is the
-  `knowledge-base` repo.
+- **KB missing** — the KB is a plain data directory, created on first topic. If the
+  user keeps theirs elsewhere, set `OKF_KB_ROOT` before running the scripts.
 - **`firecrawl` not authenticated** — `firecrawl --status`; see the firecrawl skill.
 - **`row '<x>' has no map_url — columns must be TAB-separated`** — the SOURCES row
   used spaces; re-enter with literal tabs.

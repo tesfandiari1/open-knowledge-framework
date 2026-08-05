@@ -2,11 +2,8 @@
 name: refresh
 description: |
   Re-scrape an existing OKF knowledge-base topic and regenerate its indexes, reporting what changed. Use when the user wants to update, re-pull, or refresh docs already collected for a topic, e.g. "update the tauri docs", "re-scrape premiere-pro", "refresh my knowledge base for a topic", "pull the latest docs for a topic". For a brand-new topic that does not exist yet, use okf:topic instead.
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
+license: MIT
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # okf:refresh — update an existing topic
@@ -16,6 +13,8 @@ then report the page-count delta. Same pipeline as okf:topic, minus scaffolding.
 
 ## Critical context
 
+- **Plugin root:** `OKF="${CLAUDE_PLUGIN_ROOT}"`; if that variable is unset, use the
+  plugin directory this skill loaded from (two levels up from this SKILL.md).
 - **KB root:** `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. If `$KB` is missing, ask.
 - The topic must already exist (`topics/<slug>/`). If not, this is okf:topic's job.
 - **Light wiki** still applies — refresh re-indexes; it does not rewrite pages into
@@ -36,6 +35,7 @@ then report the page-count delta. Same pipeline as okf:topic, minus scaffolding.
 
 ### Step 1 — Resolve and confirm
 ```bash
+OKF="${CLAUDE_PLUGIN_ROOT}"   # plugin root; if unset, use this skill's plugin directory
 KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"
 slug=<topic>
 [ -d "$KB/topics/$slug" ] || { echo "no such topic: $slug (use okf:topic)"; exit 1; }
@@ -61,7 +61,7 @@ the regenerated `.urls.txt` before continuing (drop translations/blog/auto-gen d
 
 ### Step 4 — Re-scrape + re-index
 ```bash
-"$KB/scripts/scrape_topic.sh" "$slug"
+"$OKF/scripts/scrape_topic.sh" "$slug"
 ```
 **Background it for more than ~20 URLs** (it can exceed a foreground command's time
 limit): run detached with output to `"$KB/.firecrawl/scrape-$slug.log"` (or your Bash

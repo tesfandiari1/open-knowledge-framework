@@ -2,11 +2,8 @@
 name: lint
 description: |
   Health-check an OKF knowledge-base topic and report work to do. Use when the user wants to audit, validate, or find gaps in a topic, e.g. "lint my tauri wiki", "what's missing in the premiere-pro docs", "check the knowledge base for orphans or stale pages", "is this topic OKF-conformant". Reports issues grouped by severity and applies only mechanical fixes (index/log regeneration), leaving content judgment to the user.
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
+license: MIT
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # okf:lint — audit a topic
@@ -17,6 +14,8 @@ prioritized to-do list. Never silently overwrite content judgments.
 
 ## Critical context
 
+- **Plugin root:** `OKF="${CLAUDE_PLUGIN_ROOT}"`; if that variable is unset, use the
+  plugin directory this skill loaded from (two levels up from this SKILL.md).
 - **KB root:** `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. If missing, ask.
 - **Conformance applies to `wiki/` only.** `raw/` holds sources that keep their
   firecrawl frontmatter (no `type:`) — do NOT flag raw pages for missing `type`.
@@ -37,6 +36,7 @@ available, and otherwise applies a **dependency-free strict validator** that cat
 the real failure modes — the unquoted `: ` (and ` #`) that silently breaks a block,
 unbalanced quotes — not just a `grep` for `type:`. So it runs anywhere, PyYAML or not:
 ```bash
+OKF="${CLAUDE_PLUGIN_ROOT}"   # plugin root; if unset, use this skill's plugin directory
 KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"; slug=<topic>
 find "$KB/topics/$slug/wiki" -name '*.md' ! -name index.md ! -name log.md \
   -print0 | while IFS= read -r -d '' f; do
@@ -81,7 +81,7 @@ if not ok: print(f"NON-CONFORMANT\t{f}")
 PY
   done
 ```
-The exact conformance rules this implements are `$KB/okf-pack/okf-rulebook.md` §7
+The exact conformance rules this implements are `$OKF/okf-pack/okf-rulebook.md` §7
 (parseable frontmatter, non-empty `type`, well-formed reserved files). PyYAML adds
 full YAML semantics but is **not required** — the stdlib validator covers the
 documented C1/C2 traps on its own.
@@ -106,7 +106,7 @@ per site and suggest `okf:refresh` for any site past that age.
 `CONTENTS.md` / `wiki/index.md` out of sync with files on disk. Fix by regenerating:
 ```bash
 for d in "$KB/topics/$slug/raw"/*/; do
-  python3 "$KB/scripts/gen_index.py" "$d" "$(basename "$d")"
+  python3 "$OKF/scripts/gen_index.py" "$d" "$(basename "$d")"
 done
 ```
 Then reconcile `wiki/index.md`'s `# Sources` links against the sites present.
@@ -116,7 +116,7 @@ Then reconcile `wiki/index.md`'s `# Sources` links against the sites present.
 A report grouped by severity (HIGH → LOW) with file paths, then a short to-do list
 ("3 fixes applied automatically; 2 items need your call"). Append a `**Lint**` entry
 to `wiki/log.md` summarizing what was checked and fixed. Defer all format rules to
-`$KB/okf-pack/okf-rulebook.md`.
+`$OKF/okf-pack/okf-rulebook.md`.
 
 ## Troubleshooting
 

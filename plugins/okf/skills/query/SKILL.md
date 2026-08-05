@@ -2,11 +2,8 @@
 name: query
 description: |
   Answer a question from the OKF knowledge base and optionally file the answer back as a reusable wiki concept. Use when the user asks what the collected docs say, wants to look something up across a topic, or asks to synthesize or compare from a topic, e.g. "what do the tauri docs say about IPC", "find something in my knowledge base", "compare two approaches from the premiere-pro docs", "summarize the objc2 NSWindow API". This is the on-demand, token-spending counterpart to the light-by-default okf:topic.
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
+license: MIT
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # okf:query — answer from the knowledge base
@@ -17,6 +14,8 @@ vanishing into chat history. This is the OKF **Query** operation.
 
 ## Critical context
 
+- **Plugin root:** `OKF="${CLAUDE_PLUGIN_ROOT}"`; if that variable is unset, use the
+  plugin directory this skill loaded from (two levels up from this SKILL.md).
 - **KB root:** `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. If missing, ask.
 - **Read narrowly.** A topic can be hundreds of pages — do NOT load `raw/` wholesale.
   Use the indexes and grep to find the few pages that matter, then read those.
@@ -68,10 +67,10 @@ write it as an OKF-conformant concept:
 - Append a `**Query**` entry to `wiki/log.md` (today's date) noting what was asked
   and what was filed.
 
-The concept template and format rules live in `$KB/okf-pack/okf-rulebook.md` (§11
+The concept template and format rules live in `$OKF/okf-pack/okf-rulebook.md` (§11
 template, §3 frontmatter, §5 links, §8 citations). For the authoring judgment —
 choosing `type`, a pre-file self-check, and gap/conflict notes — see
-`$KB/okf-pack/concept-authoring.md`. Consult both before writing.
+`$OKF/okf-pack/concept-authoring.md`. Consult both before writing.
 
 ## Example
 
