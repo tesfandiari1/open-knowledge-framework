@@ -160,7 +160,7 @@ explorations compound instead of vanishing into chat history.
 
 ### 4.3 Lint — health-check the wiki
 
-Periodically audit the wiki's health and surface work to do (the `okf:lint` skill).
+Periodically audit the wiki's health and surface work to do (the `okf` skill).
 
 **Look for:**
 - **Contradictions** between pages (flag both; never silently overwrite).
@@ -221,7 +221,7 @@ grows.
   violation — missing optional fields, unknown `type`, broken links, absent
   `index.md`. Improve when you can; tolerate always.
 - **The only hard rules are §9** (rulebook §7): parseable frontmatter, non-empty
-  `type`, well-formed reserved files. Run `okf:lint` (which checks §7) before treating
+  `type`, well-formed reserved files. Run `okf.py check` (which checks §7) before treating
   the bundle as conformant (e.g. before publishing or exchanging it).
 - **Never fabricate.** Enrichment adds structure, links, and metadata — not facts.
   Externally-sourced claims get citations; unsupported ones get gap notes.

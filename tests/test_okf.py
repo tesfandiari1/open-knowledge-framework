@@ -7,6 +7,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import subprocess
 import tempfile
@@ -108,4 +109,114 @@ assert git("commit", "-qm", "bad", "--no-verify").returncode == 0
 Path(os.path.join(repo, "bad.md")).write_text("---\ntype: Concept\n---\n")
 git("add", "bad.md")
 assert git("commit", "-qm", "fixed").returncode == 0
+
+# index: layout, sort order, untouched bytes, sources left alone, idempotent, --check.
+intro = '---\nokf_version: "0.2"\n---\n# Team notes\n\nHand-written intro.\n'
+scraped = "A scraped page that happens to be named index.md\n"
+root = bundle({
+    "index.md": intro,
+    "zeta.md": "---\ntype: Concept\ntitle: Zeta\ndescription: Two\n  lines.\n---\n",
+    "alpha.md": "---\ntype: Concept\ndescription: Title from the heading.\n---\n```\n# not a title\n```\n# Alpha [beta]\n",
+    "my note.md": "---\ntype: playbook\n---\nNo title, no description.\n",
+    "ref.md": "---\ntype: Reference\ndescription: R.\n---\n",
+    "loose.md": "No frontmatter.\n",
+    "broken.md": "---\ntype: [\n---\n# Broken\n",
+    "README.md": "# Meta, not listed\n",
+    "log.md": "# Log\n",
+    "sub/x.md": "---\ntype: Playbook\ndescription: X.\n---\n",
+    "sub/deep/y.md": "---\ntype: Concept\n---\n",
+    "raw/index.md": scraped,
+    "raw/page.md": "scraped\n",
+    "meta-only/README.md": "# Only meta\n",
+})
+
+
+def run(*a):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        code = okf.main(["index", root, *a])
+    return code, buf.getvalue()
+read = lambda rel: Path(root, rel).read_text()
+block = """<!-- okf:index:start -->
+# Folders
+
+* [sub](sub/index.md) - 2 notes: 1 Concept, 1 Playbook
+
+# Concept
+
+* [Alpha \\[beta\\]](alpha.md) - Title from the heading.
+* [Zeta](zeta.md) - Two lines.
+
+# playbook
+
+* [my note](my%20note.md)
+
+# Reference
+
+* [ref](ref.md) - R.
+
+# Untyped
+
+* [Broken](broken.md)
+* [loose](loose.md)
+<!-- okf:index:end -->
+"""
+assert run() == (0, f"okf index {root}: wrote 3, unchanged 0\n")
+assert read("index.md") == intro + "\n" + block, read("index.md")
+assert read("sub/index.md") == ("<!-- okf:index:start -->\n# Folders\n\n* [deep](deep/index.md) - 1 note: 1 Concept\n\n"
+                                "# Playbook\n\n* [x](x.md) - X.\n<!-- okf:index:end -->\n"), read("sub/index.md")
+assert read("sub/deep/index.md") == "<!-- okf:index:start -->\n# Concept\n\n* [y](y.md)\n<!-- okf:index:end -->\n"
+assert read("raw/index.md") == scraped and not os.path.exists(os.path.join(root, "meta-only", "index.md"))
+assert run() == (0, f"okf index {root}: wrote 0, unchanged 3\n")
+assert run("--check") == (0, f"okf index {root}: would change 0, unchanged 3\n")
+assert not [f for f in okf.check(root)[1] if f[1].endswith("index.md")], okf.check(root)[1]
+Path(root, "index.md").write_text(read("index.md") + "\nFooter.\n")
+Path(root, "new.md").write_text("---\ntype: Concept\ndescription: New.\n---\n")
+before = read("index.md")
+assert run("--check") == (1, f"index.md\nokf index {root}: would change 1, unchanged 2\n")
+assert read("index.md") == before, "--check writes nothing"
+run()
+assert read("index.md") == intro + "\n" + block.replace("* [Zeta]", "* [new](new.md) - New.\n* [Zeta]") + "\nFooter.\n"
+Path(root, "sub/index.md").write_text("<!-- okf:index:start -->\nhand edit, no end marker\n")
+with contextlib.redirect_stderr(io.StringIO()):
+    assert run()[0] == 1 and read("sub/index.md") == "<!-- okf:index:start -->\nhand edit, no end marker\n"
+
+# index --catalog: one JSON line per indexed note, sorted by path.
+Path(root, "sub/index.md").unlink()
+Path(root, "dated.md").write_text("---\ntype: Concept\ntitle: Dated\nupdated: 2026-01-02\n---\n")
+assert run("--catalog")[0] == 0
+rows = [json.loads(line) for line in read("catalog.jsonl").splitlines()]
+assert [r["path"] for r in rows] == ["alpha.md", "broken.md", "dated.md", "loose.md", "my note.md", "new.md",
+                                     "ref.md", "sub/deep/y.md", "sub/x.md", "zeta.md"], rows
+assert rows[2] == {"path": "dated.md", "type": "Concept", "title": "Dated", "description": "", "updated": "2026-01-02"}
+assert rows[3] == {"path": "loose.md", "type": "", "title": "loose", "description": ""}, rows[3]
+assert run("--catalog", "--check")[0] == 0
+
+# index review fixes: inline marker mentions stay text, a trailing backslash keeps the link, a symlink into
+# raw/ is never written, a folder whose notes are gone gets an empty block, a CRLF checkout passes --check.
+doc = "# Doc\n\nThe tool writes between `<!-- okf:index:start -->` and `<!-- okf:index:end -->`.\n"
+root = bundle({
+    "index.md": doc,
+    "m.md": "---\ntype: Concept\ntitle: 'C:\\dir\\'\ndescription: 'see <!-- okf:index:end --> here'\n---\n",
+    "gone/old.md": "---\ntype: Concept\n---\n",
+    "topic/raw/index.md": scraped,
+    "topic/n.md": "---\ntype: Concept\n---\n",
+})
+os.symlink("raw/index.md", os.path.join(root, "topic", "index.md"))
+assert run()[0] == 0 and run() == (0, f"okf index {root}: wrote 0, unchanged 2\n")
+assert read("index.md").startswith(doc + "\n<!-- okf:index:start -->\n"), read("index.md")
+assert "* [C:\\\\dir\\\\](m.md) - see <!-- okf:index:end --> here\n" in read("index.md"), read("index.md")
+assert read("topic/raw/index.md") == scraped
+assert not [f for f in okf.check(root)[1] if f[1].endswith("index.md")], okf.check(root)[1]
+Path(root, "gone/old.md").unlink()
+run()
+assert read("gone/index.md") == "<!-- okf:index:start -->\n\n<!-- okf:index:end -->\n", read("gone/index.md")
+Path(root, "index.md").write_bytes(Path(root, "index.md").read_bytes().replace(b"\n", b"\r\n"))
+assert run("--check")[0] == 0
+try:
+    okf.main(["index", os.path.join(root, "nope"), "--catalog"])
+except SystemExit as e:
+    assert "is not a folder" in str(e), e
+else:
+    raise AssertionError("a missing root must fail")
 print("ok")

@@ -5,7 +5,7 @@
 > This file holds the JUDGMENT for writing one good concept on demand: choosing
 > `type`, a pre-file self-check, and recording gaps and conflicts honestly.
 > Vendor-neutral plain Markdown. Used whenever an operator files a concept back
-> (e.g. the `okf:query` "file back" step) or synthesizes a `wiki/` page — there is
+> (e.g. the `okf` skill's "file back" step) or synthesizes a `wiki/` page — there is
 > no batch pipeline; synthesis is one concept at a time.
 
 ## Choosing `type`

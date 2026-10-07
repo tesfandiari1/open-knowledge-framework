@@ -41,7 +41,7 @@ clean, frontmattered Markdown.
 - File a **Query answer**, **Comparison**, or **Analysis** as a concept
   (`wiki/concepts/`), citing the raw pages it draws from.
 
-Synthesize one concept at a time (the `okf:query` file-back path), never the whole
+Synthesize one concept at a time (the `okf` skill's file-back path), never the whole
 topic unasked. When you do create concept pages, they MUST be OKF-conformant
 (parseable frontmatter, non-empty `type`; rulebook §7) and link to their raw sources
 under a `# Citations` heading. See `../../okf-pack/concept-authoring.md` for the craft.

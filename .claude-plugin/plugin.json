@@ -1,7 +1,7 @@
 {
   "name": "okf",
-  "version": "0.3.0",
-  "description": "Claude Code runtime for the Open Knowledge Framework: build and maintain agentic knowledge bases in the vendor-neutral Open Knowledge Format. Scrape documentation into topics, query the compiled corpus with citations, and keep it linted. Skills: okf:topic, okf:refresh, okf:query, okf:lint.",
+  "version": "0.4.0",
+  "description": "Claude Code runtime for the Open Knowledge Framework: build and maintain agentic knowledge bases in the vendor-neutral Open Knowledge Format. Scrape documentation into topics, check and index any knowledge base, and query it with citations. Skills: okf:okf, okf:topic, okf:refresh.",
   "author": { "name": "tristin", "email": "tristin@uniwise.ai" },
   "license": "MIT",
   "keywords": ["okf", "open-knowledge-format", "knowledge-base", "agentic", "wiki", "firecrawl", "documentation", "scraping"]

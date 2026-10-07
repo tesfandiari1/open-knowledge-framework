@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "okf",
-      "description": "Build and operate LLM-maintained knowledge bases in the vendor-neutral Open Knowledge Format. Skills: okf:topic, okf:refresh, okf:query, okf:lint.",
+      "description": "Build and operate LLM-maintained knowledge bases in the vendor-neutral Open Knowledge Format. Skills: okf:okf (check, index, query), okf:topic, okf:refresh.",
       "author": { "name": "tristin" },
       "category": "productivity",
       "source": "."

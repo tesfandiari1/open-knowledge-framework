@@ -100,4 +100,4 @@ pages that may need review. Suggest `git commit` in the KB.
 - **Nothing changed** — expected when the source is stable; report "no changes".
 - **Many pages removed** — the source may have restructured URLs; check the
   `.urls.txt` against a fresh `firecrawl map` before trusting the delta.
-- **Conformance worries after refresh** — run okf:lint.
+- **Conformance worries after refresh** — run okf:okf.

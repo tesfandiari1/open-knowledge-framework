@@ -54,8 +54,8 @@ pipeline; there is no agent pipeline.
 | Operation | Skill | What happens |
 |-----------|-------|--------------|
 | **Ingest** | `okf:topic` (new) / `okf:refresh` (existing) | Scrape sources with Firecrawl → clean, frontmattered Markdown in `raw/` (`scripts/firecrawl_to_md.py`); regenerate each site's `CONTENTS.md` (`scripts/gen_index.py`); refresh the light `wiki/` catalog. |
-| **Query** | `okf:query` | Answer from the compiled corpus with citations; optionally file the answer back as a conformant concept (per `concept-authoring.md` + the rulebook). |
-| **Lint** | `okf:lint` | Audit `wiki/` conformance (rulebook §7, checked inline), surface orphans / stale sources / index drift, apply mechanical fixes. |
+| **Query** | `okf:okf` | Answer from the compiled corpus with citations; optionally file the answer back as a conformant concept (per `concept-authoring.md` + the rulebook). |
+| **Lint** | `okf:okf` | Run `scripts/okf.py check` for conformance (rulebook §7) and drift, fix what it reports, and rebuild indexes with `scripts/okf.py index`. |
 
 Heavy unattended bulk synthesis is **not** part of the system. If it is ever needed,
 it would graduate as an explicit, opt-in Claude Code `/workflow` whose agents read
@@ -89,4 +89,4 @@ runtime wrapper around them in this repo; the format does not depend on them.
 2. Standing up a space? Follow [`okf-space.md`](okf-space.md) (`raw/` + `wiki/`,
    conventions, the Ingest/Query/Lint operations).
 3. With the okf plugin installed, just use the skills: `okf:topic` to scrape a new
-   topic, `okf:query` to ask the corpus, `okf:lint` to audit.
+   topic, `okf:okf` to ask the corpus or audit it.

@@ -1,4 +1,4 @@
-# OKF — an Open Knowledge Framework for agentic knowledge bases
+# OKF: an Open Knowledge Framework for agentic knowledge bases
 
 Most LLM-plus-documents setups are RAG: retrieve chunks, regenerate an answer, forget everything. Nothing accumulates. OKF is the opposite pattern. An agent incrementally builds and maintains a persistent, interlinked Markdown wiki over your private knowledge. Knowledge is compiled once and kept current, not re-derived on every question.
 
@@ -22,8 +22,8 @@ Every OKF space has the same shape:
 
 | Layer | Owner | On disk |
 |---|---|---|
-| Raw sources | **you** curate | `raw/` — immutable documents. The agent reads them, never edits them. |
-| The wiki | the **agent** owns | `wiki/` — an OKF bundle: concept files, cross-links, `index.md`, `log.md`. |
+| Raw sources | **you** curate | `raw/`: immutable documents. The agent reads them, never edits them. |
+| The wiki | the **agent** owns | `wiki/`: an OKF bundle of concept files, cross-links, `index.md`, and `log.md`. |
 | The schema | co-evolved | `AGENTS.md` plus the rulebook. The discipline that keeps the agent rigorous. |
 
 And three operations run over it: **Ingest** (file new sources and integrate them), **Query** (answer from the compiled wiki with citations, filing good answers back), and **Lint** (health-check for contradictions, stale claims, orphans, drift).
@@ -64,18 +64,19 @@ Then just talk to it:
 |---|---|
 | `okf:topic` | Scrape one or more sites into a new topic |
 | `okf:refresh` | Re-scrape an existing topic and report the delta |
-| `okf:query` | Answer from the collected docs, with citations |
-| `okf:lint` | Audit a topic and apply mechanical fixes |
+| `okf:okf` | Check, index, and query any knowledge base, with citations |
 
 The knowledge base lives at `~/code/knowledge-base` by default (set `OKF_KB_ROOT` to move it). Scraping is resumable and cheap: raw docs are the product, and the agent does not rewrite pages into summaries unless you ask.
 
-## Check any knowledge base
+## Check and index any knowledge base
 
 `scripts/okf.py` checks any folder of Markdown files, with any agent or viewer. It needs only [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv run scripts/okf.py check ~/my-notes
 ```
+
+In a space made by `new_space.sh`, check the `wiki/` folder. The space root also holds `AGENTS.md` and the rulebook, which are not notes.
 
 Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2. Every note has parseable frontmatter with a non-empty `type`, and every `index.md` and `log.md` is well formed. The command exits 1 when any rule fails. Warnings cover the rest:
 - missing descriptions
@@ -89,11 +90,21 @@ Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2
 
 Output lists at most 20 findings per kind (`--all` lists every one). To tell the checker which folders hold sources, inbox material or files to skip, copy `okf.toml.example` to your root as `okf.toml`. Test: `uv run tests/test_okf.py`.
 
-**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when it adds hard failures. It stores the current count in `.okf-baseline`, and that count only goes down:
+**Build the indexes.** `index` writes an `index.md` in each folder that holds notes. It lists the subfolders and the notes, grouped by `type`, with each note's description. An agent can then find a note without opening every file:
 
 ```bash
-cd ~/my-notes && ln -s ~/code/okf/hooks/pre-commit .git/hooks/pre-commit   # set OKF_HOME if okf lives elsewhere
+uv run scripts/okf.py index ~/my-notes
 ```
+
+The generated list sits between `<!-- okf:index:start -->` and `<!-- okf:index:end -->`. The command never changes text outside the markers, so a hand-written intro and the root `okf_version` stay as they are. It never writes in source or inbox folders, and a second run changes nothing. `--check` writes nothing and exits 1 if any index is out of date. `--catalog` also writes `catalog.jsonl` at the root, one JSON line per note, for search in a large knowledge base.
+
+**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when hard failures rise above the stored count. It stores the current count in `.okf-baseline`, and that count only goes down. It checks the whole working tree, so a bad file that is not staged can also block a commit:
+
+```bash
+cd ~/my-notes && ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit   # export OKF_HOME if okf lives elsewhere
+```
+
+**Use the skill in other agents.** `skills/okf` follows the open [Agent Skills](https://agentskills.io) format, so agents other than Claude Code can load it. Copy or symlink `skills/okf` into that agent's skills folder, and set `OKF_HOME` to your okf clone.
 
 ## What's in the repo
 
@@ -104,10 +115,13 @@ okf-pack/                  The framework's reference layer (start here)
   concept-authoring.md     Judgment for writing one good concept on demand
   topic-AGENTS.template.md Per-topic schema seed for the doc-scraping path
 scripts/                   Scaffolds + the Firecrawl ingestion pipeline
-  okf.py                   Check any knowledge base for conformance and drift
+  okf.py                   Check and index any knowledge base
   new_space.sh             Stand up a private knowledge space anywhere
   new_topic.sh             Scaffold a scraped-docs topic
-skills/                    Claude Code runtime: topic, refresh, query, lint
+skills/                    Agent skills: okf (check, index, query), topic, refresh
+hooks/pre-commit           Blocks a commit when hard failures rise
+tests/test_okf.py          Tests for okf.py
+okf.toml.example           Config template for check and index
 .claude-plugin/            Plugin + marketplace manifests (this repo installs as a plugin)
 ```
 

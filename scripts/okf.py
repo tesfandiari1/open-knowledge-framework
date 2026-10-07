@@ -6,6 +6,7 @@
 """okf: keep a folder of Markdown files conformant with the Open Knowledge Format.
 
     uv run scripts/okf.py check [ROOT] [--all] [--baseline FILE]
+    uv run scripts/okf.py index [ROOT] [--check] [--catalog]
 
 Hard failures (exit 1) are the OKF conformance rules, identical in v0.1 and v0.2:
 every non-reserved .md has parseable frontmatter with a non-empty `type`, and every
@@ -15,15 +16,19 @@ Files that match an `inbox` glob also skip checks, and each one that no note lin
 is reported as unprocessed.
 Files that match a `meta` glob (default: README, AGENTS, CLAUDE) skip conformance
 but keep their link checks. Optional config: ROOT/okf.toml (see okf.toml.example).
+
+`index` writes a generated listing between okf:index markers in each folder's index.md.
+It never touches sources, inbox, or excluded paths, and text outside the markers stays as is.
 """
 import argparse
 import fnmatch
+import json
 import os
 import posixpath
 import re
 import sys
 from collections import Counter, defaultdict
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import tomllib
 
@@ -53,6 +58,8 @@ H2 = re.compile(r"^## +(.*)$", re.MULTILINE)
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
 IMPORT = re.compile(r"(?<![\w`])@(~?[\w.+/-]+)")
+H1 = re.compile(r"^# +(.*\S)", re.MULTILINE)
+START, END = "<!-- okf:index:start -->", "<!-- okf:index:end -->"
 
 
 def load_config(root):
@@ -269,6 +276,117 @@ def ratchet(path, hard):
     return 0
 
 
+def index(root, check_only=False, catalog=False):
+    """Regenerate the okf:index block of every folder's index.md. Return the exit code."""
+    cfg = load_config(root)
+    skip = lambda rel: any(fnmatch.fnmatch(rel, g) for k in ("exclude", "sources", "inbox") for g in cfg[k])
+    is_meta = lambda rel: any(fnmatch.fnmatch(rel, g) for g in cfg["meta"])
+    one_line = lambda v: " ".join(str(v if v is not None else "").split())
+    esc = lambda s: re.sub(r"([\\\[\]])", r"\\\1", s)
+
+    def at(mark, text):  # a marker counts only on a line of its own, so inline mentions stay text
+        m = re.search(rf"^{mark}\r?$", text, re.MULTILINE)
+        return m.start() if m else -1
+
+    def read(rel):
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8", errors="surrogateescape", newline="") as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
+
+    by_dir, tree = defaultdict(list), defaultdict(Counter)  # tree: folder -> type counts of every note beneath it
+    had = set()  # folders with an index.md, so a stale block is emptied when its notes are gone
+    for rel in sorted(walk(root)):
+        name = posixpath.basename(rel)
+        if name.lower() == "index.md" and not skip(rel):
+            had.add(posixpath.dirname(rel))
+        if not rel.endswith(".md") or name.lower() in ("index.md", "log.md") or skip(rel) or is_meta(rel):
+            continue
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8-sig", errors="replace") as f:
+                text = f.read().replace("\r\n", "\n")
+        except OSError:  # broken symlink, permissions: list it untyped
+            text = ""
+        fm, m = frontmatter(text)[0] or {}, FM.match(text)
+        h1 = H1.search(FENCE.sub("", text[m.end():] if m else text))
+        note = {"path": rel, "type": one_line(fm.get("type")),
+                "title": one_line(fm.get("title")) or (h1.group(1).strip() if h1 else name[:-3]),
+                "description": one_line(fm.get("description"))}
+        if fm.get("updated"):
+            note["updated"] = str(fm["updated"])
+        d = posixpath.dirname(rel)
+        by_dir[d].append(note)
+        while True:
+            tree[d][note["type"] or "Untyped"] += 1
+            if not d:
+                break
+            d = posixpath.dirname(d)
+
+    kids, keep = defaultdict(list), []
+    for d in sorted(tree, key=lambda d: (-(d.count("/") + bool(d)), d)):  # deepest first
+        if (by_dir[d] or kids[d]) and not skip(posixpath.join(d, "index.md")):
+            keep.append(d)
+            if d:
+                kids[posixpath.dirname(d)].append(d)
+
+    # ponytail: one index.md per folder, never split. `okf check` warns past INDEX_MAX_BYTES.
+    # Split by type or by letter when big folders make that warning common.
+    out = {}  # rel -> (old text, new text)
+    for d in keep + sorted(had - set(keep)):
+        sections = []
+        if kids[d]:
+            lines = []
+            for k in sorted(kids[d], key=lambda k: (k.lower(), k)):
+                n, name = sum(tree[k].values()), posixpath.basename(k)
+                top = sorted(tree[k].items(), key=lambda x: (-x[1], x[0].lower(), x[0]))[:3]
+                lines.append(f"* [{esc(name)}]({quote(name, safe='/')}/index.md) - {n} note{'s' * (n != 1)}: "
+                             + ", ".join(f"{c} {t}" for t, c in top))
+            sections.append(("Folders", lines))
+        groups = defaultdict(list)
+        for note in by_dir[d]:
+            groups[note["type"]].append(note)
+        for t in sorted(groups, key=lambda t: (not t, t.lower(), t)):  # untyped ("") last
+            lines = [f"* [{esc(n['title'])}]({quote(posixpath.basename(n['path']), safe='/')})"
+                     + (f" - {n['description']}" if n["description"] else "")
+                     for n in sorted(groups[t], key=lambda n: (n["title"].lower(), n["path"]))]
+            sections.append((t or "Untyped", lines))
+        rel = posixpath.join(d, "index.md")
+        if os.path.islink(os.path.join(root, rel)):
+            continue  # never write through a symlink, it can point into sources
+        old = read(rel)
+        i, j = at(START, old or ""), at(END, old or "")
+        if not sections and i < 0 and j < 0:
+            continue  # nothing to list and no old block to empty
+        nl = "\r\n" if "\r\n" in (old or "") else "\n"  # a CRLF file stays CRLF, so --check passes on CRLF checkouts
+        block = START + "\n" + "\n\n".join(f"# {h}\n\n" + "\n".join(lines) for h, lines in sections) + "\n" + END
+        block = block.replace("\n", nl)
+        if old is None:
+            new = block + "\n"
+        elif 0 <= i < j:
+            new = old[:i] + block + old[j + len(END):]
+        elif i < 0 and j < 0:
+            new = old + ("" if not old or old.endswith(nl * 2) else nl if old.endswith("\n") else nl * 2) + block + nl
+        else:
+            print(f"okf index: {rel} has an unmatched okf:index marker. Fix it, then run again.", file=sys.stderr)
+            return 1
+        out[rel] = (old, new)
+    if catalog:
+        rows = sorted((n for d in keep for n in by_dir[d]), key=lambda n: n["path"])
+        out["catalog.jsonl"] = (read("catalog.jsonl"), "".join(json.dumps(n, ensure_ascii=False) + "\n" for n in rows))
+
+    changed = sorted(rel for rel, (old, new) in out.items() if old != new)
+    for rel in changed:
+        if check_only:
+            print(rel)
+        else:
+            with open(os.path.join(root, rel), "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+                f.write(out[rel][1])
+    print(f"okf index {root}: {'would change' if check_only else 'wrote'} {len(changed)}, "
+          f"unchanged {len(out) - len(changed)}")
+    return int(check_only and bool(changed))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="okf", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -277,8 +395,16 @@ def main(argv=None):
     c.add_argument("--all", action="store_true", help="list every finding, not the first 20 per code")
     c.add_argument("--baseline", metavar="FILE",
                    help="exit 1 only if hard failures rise above the count in FILE, and lower it when they fall")
+    i = sub.add_parser("index", help="write a generated listing into each folder's index.md")
+    i.add_argument("root", nargs="?", default=".")
+    i.add_argument("--check", action="store_true", help="write nothing, and exit 1 if any index.md would change")
+    i.add_argument("--catalog", action="store_true", help="also write catalog.jsonl, one JSON line per note")
     a = ap.parse_args(argv)
     root = os.path.abspath(a.root)
+    if not os.path.isdir(root):
+        sys.exit(f"okf: {root} is not a folder")
+    if a.cmd == "index":
+        return index(root, a.check, a.catalog)
     stats, findings = check(root)
     hard = report(root, stats, findings, a.all)
     return ratchet(a.baseline, hard) if a.baseline else int(hard > 0)

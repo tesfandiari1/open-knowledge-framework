@@ -1,7 +1,7 @@
 ---
 name: topic
 description: |
-  Add documentation for a topic to the OKF knowledge base: scaffold a topic folder, scrape one or more sites with Firecrawl into clean frontmattered Markdown, and refresh the light navigation wiki. Use when the user gives URLs or a doc site and wants them collected for reference, e.g. "scrape the Bun docs into my knowledge base", "add Svelte 5 docs as a topic", "gather these pages for later", or "create a new topic from a URL". Pairs with the firecrawl skill (the scraping engine) and the okf:refresh / okf:query / okf:lint skills.
+  Add documentation for a topic to the OKF knowledge base: scaffold a topic folder, scrape one or more sites with Firecrawl into clean frontmattered Markdown, and refresh the light navigation wiki. Use when the user gives URLs or a doc site and wants them collected for reference, e.g. "scrape the Bun docs into my knowledge base", "add Svelte 5 docs as a topic", "gather these pages for later", or "create a new topic from a URL". Pairs with the firecrawl skill (the scraping engine) and the okf:refresh / okf:okf skills.
 license: MIT
 allowed-tools: Bash, Read, Write, Edit
 ---
@@ -25,7 +25,7 @@ KB's own pipeline scripts; it does not reinvent scraping.
 - **Light wiki by default.** The scraped Markdown is the product. Do **not** read
   and rewrite scraped pages into OKF concept documents — a topic can be hundreds of
   pages and that burns tokens for little gain. The wiki layer is just a mechanical
-  catalog. Full concept synthesis is the job of `okf:query`, on demand.
+  catalog. Full concept synthesis is the job of `okf:okf`, on demand.
 - **Firecrawl costs credits.** Curate the URL list before scraping; never scrape a
   whole auto-generated API reference (thousands of pages) without subsetting.
 - **Output is auto-cleaned.** `firecrawl_to_md.py` sets frontmatter `description` from
