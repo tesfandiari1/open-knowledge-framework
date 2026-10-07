@@ -22,11 +22,19 @@ fi
 # Seed the shared reference layer so wiki pages and AGENTS.md can link it
 # relatively and the KB stays usable outside Claude Code. Never overwritten.
 [ -d "$KB/okf-pack" ] || cp -R "$PLUGIN_ROOT/okf-pack" "$KB/okf-pack"
+# okf.py config: the pack docs carry no frontmatter by design, so they are meta.
+# Setting meta replaces its default list, so the defaults are repeated. Never overwritten.
+[ -e "$KB/okf.toml" ] || cat > "$KB/okf.toml" <<'EOF'
+meta = ["okf-pack/*",
+        "README.md", "*/README.md", "AGENTS.md", "*/AGENTS.md", "CLAUDE.md", "*/CLAUDE.md"]
+EOF
 
 mkdir -p "$dir/raw" "$dir/wiki/concepts"
+touch "$dir/wiki/concepts/.gitkeep"  # git keeps the folder, so the AGENTS.md route to it stays alive
 
-# AGENTS.md from template (use the KB's seeded copy so links stay consistent)
-sed "s/{{TOPIC}}/$slug/g" "$KB/okf-pack/topic-AGENTS.template.md" > "$dir/AGENTS.md"
+# AGENTS.md from the plugin's template, so an older seeded okf-pack/ copy cannot add dead routes.
+# Its links still point at the KB's okf-pack/ copy.
+sed "s/{{TOPIC}}/$slug/g" "$PLUGIN_ROOT/okf-pack/topic-AGENTS.template.md" > "$dir/AGENTS.md"
 
 # raw/SOURCES.md — scrape config (the ```sources block is parsed by scrape_topic.sh)
 cat > "$dir/raw/SOURCES.md" <<EOF

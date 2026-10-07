@@ -6,7 +6,7 @@
 > turns an LLM from a generic chatbot into a disciplined wiki maintainer.
 >
 > **How to use it.** Save this file at the root of your space as `AGENTS.md`
-> (Codex/OpenCode), `CLAUDE.md` (Claude Code), or paste it as a system prompt
+> (Codex/OpenCode), CLAUDE.md (Claude Code), or paste it as a system prompt
 > alongside `okf-rulebook.md` in any LLM environment. It is plain, portable
 > Markdown — no YAML frontmatter, no SDK, no vendor lock-in.
 >
@@ -67,8 +67,8 @@ okf-space/
 
 The directory structure is **domain-independent** (rulebook §1, spec §3) — the
 subdirectories above are a sensible default, not a requirement. Pick groupings that
-fit what you're capturing (a book wiki might use `characters/`, `themes/`,
-`chapters/`; a research wiki might use `papers/`, `findings/`, `open-questions/`).
+fit what you're capturing (a book wiki might use characters/, themes/,
+chapters/. A research wiki might use papers/, findings/, open-questions/).
 Record whatever you choose in §3 below.
 
 ---
@@ -102,7 +102,7 @@ Record whatever you choose in §3 below.
 > Defer all format mechanics to `okf-rulebook.md`. Record only the choices specific
 > to *this* space here, so every future session follows them.
 
-- **Subdirectory taxonomy:** _e.g. `sources/`, `entities/`, `concepts/`, `topics/`._
+- **Subdirectory taxonomy:** _e.g. sources/, entities/, concepts/, topics/._
   _(edit to match your domain)_
 - **`type` vocabulary:** the concept types you actually use — _e.g. `Source`,
   `Entity`, `Concept`, `Topic`, `Comparison`, `Reference`._ Keep it small and
@@ -120,25 +120,29 @@ Record whatever you choose in §3 below.
 ## 4. Operations
 
 The space supports three operations — **Ingest**, **Query**, **Lint**. Each
-is a Claude Code okf-plugin skill backed by the plugin's `scripts/`; the flows below describe what
+is a Claude Code okf-plugin skill backed by the plugin's scripts. The flows below describe what
 each does (and work for any LLM following the rulebook).
 
-### 4.1 Ingest — add sources (light by default)
+### 4.1 Ingest: add sources
 
-Bring sources into the space as clean, frontmattered Markdown and catalog them — the
-raw scrape is the product; the `wiki/` is a thin index over it. No per-page rewrite.
+Turn one source (a file, pasted text, a URL, or a folder) into typed, linked notes.
+The ingest skill (`okf:ingest` in Claude Code) runs this flow. Any agent can follow it.
 
-**Flow** (`okf:topic` for a new topic, `okf:refresh` for an existing one):
-1. Declare each source in `raw/SOURCES.md`; scrape into `raw/` (resumable and
-   idempotent — only new or changed URLs are pulled). Note the **ingest date**.
-2. The scrape transforms each page to frontmattered Markdown and regenerates every
-   site's mechanical `raw/<site>/CONTENTS.md`.
-3. Refresh the light `wiki/index.md` so its `# Sources` section catalogs the sites,
-   and append an `**Ingest**` entry to `wiki/log.md`.
-4. **Report & commit.** Summarize the page-count delta; `git commit`.
+**Flow:**
+1. Save the source unchanged in `raw/` as `YYYY-MM-DD-<slug>.<ext>`. Never edit it again.
+2. Search the wiki for each person, org, project, and idea it names. Update the notes
+   that exist before you create new ones.
+3. Write one `Source` note in wiki/sources/ with the decisions, actions, and facts worth
+   finding later. Give each new person, org, and project its own note in wiki/entities/.
+   Each note gets `type`, `title`, a one-sentence `description`, and `created` and
+   `updated` dates, and cites the raw file under `# Citations`.
+4. Run `okf.py index` and `okf.py check` on the space folder. Fix each new hard failure.
+   Check lists each Markdown file in raw/ that no note links to yet as `unprocessed`.
+5. Add an `**Ingest**` entry to `wiki/log.md`, then commit.
 
-**Do NOT** rewrite scraped pages into concept documents by default — a topic may be
-hundreds of pages. Concept synthesis is on demand, one page at a time (§4.2).
+For a whole documentation site, use `okf:topic` (new topic) or `okf:refresh` (existing
+topic). They scrape the pages into `raw/`, and the wiki stays a thin index over them.
+Do not rewrite scraped pages into notes by default. Synthesis is on demand (§4.2).
 
 ### 4.2 Query — ask the wiki
 
@@ -155,7 +159,7 @@ explorations compound instead of vanishing into chat history.
    a generated page.
 4. **File worthwhile answers back as new concepts.** A comparison you asked for, an
    analysis, a discovered connection — write it as a conformant concept under
-   `wiki/concepts/` (per `concept-authoring.md` + rulebook §11), index it, and append
+   wiki/concepts/ (per `concept-authoring.md` + rulebook §11), index it, and append
    a `**Query**` log entry noting what was asked and what was filed.
 
 ### 4.3 Lint — health-check the wiki
@@ -186,7 +190,7 @@ Two reserved files make the space navigable as it grows (rulebook §8, §9):
 - **`index.md` — content-oriented.** A catalog of what exists, grouped by section,
   each entry linking a concept with its one-line `description`. Read first on every
   Query. Raw-source manifests are regenerated by the plugin's `scripts/gen_index.py` on every
-  Ingest, so they always reflect current contents.
+  scrape (okf:topic, okf:refresh), so they always reflect current contents.
 - **`log.md` — chronological.** Append-only, newest-first, `## YYYY-MM-DD` date
   headings. Each entry leads with a bold action word — `**Ingest**`, `**Query**`,
   `**Lint**`, `**Creation**`, `**Update**`, `**Deprecation**`. The consistent prefix
@@ -230,7 +234,7 @@ grows.
 
 ## 8. Using and evolving this spec
 
-- **Drop-in:** keep this file at the space root as `AGENTS.md`/`CLAUDE.md` (read
+- **Drop-in:** keep this file at the space root as `AGENTS.md` or CLAUDE.md (read
   automatically each session) or paste it with `okf-rulebook.md` as a system prompt.
 - **Co-evolve it:** when you discover a workflow tweak, a naming rule, or an edge
   case worth keeping, write it into §3 or §4. The space gets sharper every time you

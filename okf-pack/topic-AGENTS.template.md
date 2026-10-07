@@ -52,7 +52,7 @@ under a `# Citations` heading. See `../../okf-pack/concept-authoring.md` for the
   §7 conformance does not apply to them — they stay as-is (firecrawl frontmatter, no
   `type`). Synthesized `wiki/` pages use `Topic`, `Concept`, `Comparison`, `Analysis`,
   `Reference`.
-- **Links:** bundle-relative (`/concepts/x.md`) inside `wiki/`; raw sources are
+- **Links:** bundle-relative (for example /concepts/x.md) inside `wiki/`. Raw sources are
   cited by relative path into `../raw/...`.
 - **Tags:** lowercase; reuse the `base_tags` from `raw/SOURCES.md`.
 

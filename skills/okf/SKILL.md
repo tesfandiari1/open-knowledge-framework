@@ -5,9 +5,9 @@ description: >-
   with YAML frontmatter. Use when the user wants to check, lint, or validate a knowledge
   base or notes folder, fix frontmatter or conformance failures, build or refresh index.md
   files, find or look up something in the notes, answer a question from the knowledge
-  base with citations, or set up the okf pre-commit guard. Runs the okf.py CLI (check,
-  index) and follows the okf-pack format rules. Works in any agent that can run shell
-  commands.
+  base with citations, count or approve note types, or set up the okf pre-commit guard.
+  Runs the okf.py CLI (check, index, types) and follows the okf-pack format rules. Works
+  in any agent that can run shell commands.
 license: MIT
 compatibility: Requires uv. The CLI gets Python 3.11+ and PyYAML through uv.
 ---
@@ -17,6 +17,10 @@ compatibility: Requires uv. The CLI gets Python 3.11+ and PyYAML through uv.
 This skill keeps a folder of Markdown notes conformant with the Open Knowledge Format
 (OKF) and answers questions from it. The `okf.py` CLI runs the checks and writes the
 indexes. You fix what it reports, and you answer with citations.
+
+To add new material (a file, pasted text, a URL, or a folder), use the ingest skill
+(`skills/ingest`, `okf:ingest` in Claude Code). It saves the raw input and writes the
+notes that link to it.
 
 The format rules live in the okf-pack docs. Read them when you need a rule. Do not guess:
 
@@ -51,8 +55,8 @@ uv run "$OKF/scripts/okf.py" --help
 3. If the current folder has no `okf.toml` and a parent folder has one, use that parent.
    An `okf.toml` file marks a configured root.
 
-In an OKF space made by `new_space.sh`, the root is the `wiki/` folder. The space folder
-also holds `AGENTS.md`, the rulebook, and `raw/`, which are not notes.
+In an OKF space made by `new_space.sh`, the root is the space folder. Its `okf.toml`
+marks the rulebook docs as meta and `raw/` as the inbox.
 
 The CLI also works without `okf.toml`. The commands below use `KB` for the root.
 
@@ -105,7 +109,7 @@ Rules for every fix:
 - `no-frontmatter`: the file does not start with `---`. Add a block at the top with
   `type` and `description`. If the file is not a note, change `okf.toml` instead.
 - `no-type`: add `type: <Type>`. Choose it per `concept-authoring.md`. Prefer a type that
-  the knowledge base already uses: `grep -rh '^type:' "$KB" --include='*.md' | sort | uniq -c`.
+  the knowledge base already uses. `okf.py types` lists them (see Types).
 - `index-frontmatter`: an `index.md` may carry only `okf_version`, and only at the root.
   Remove the other keys. If no key is left, remove the `---` lines too.
 - `log-heading`: each `## ` heading in a `log.md` must start with an ISO date, for
@@ -126,13 +130,18 @@ Rules for every fix:
 - `duplicate-name`: two notes share a filename, so `[[wikilinks]]` to that name are
   ambiguous. Report it. Rename a file only when the user agrees, because a rename
   breaks links.
-- `index-size`: an `index.md` is more than 4 KB. Index writes one list per folder and
-  does not split it. If the folder is hard to navigate, suggest subfolders.
+- `unknown-type`: the note's `type` is not a key of the `[types]` table in `okf.toml`.
+  If the detail says `alias of X`, change the type to `X`. Else, choose an approved type
+  that fits, or ask the user to add the type to `[types]`.
+- `index-size`: an `index.md` is more than 8 KB. Index shrinks its own block to fit (see
+  Index), so the cause is text outside the markers, a hand-written index that index
+  skips, or a long list of subfolders. Report it. Suggest a shorter intro or fewer
+  subfolders.
 - `context-budget`: the agent instructions that load on every turn are more than 16 KB.
   Report the largest files from the detail. Suggest `paths:` scopes for `.claude/rules`
   files or fewer `@imports`. Do not cut instructions without the user.
 - `unprocessed`: no note links to this inbox file yet. This is work to do, not an
-  error. Offer to ingest it per `okf-space.md` section 4.1.
+  error. Offer to ingest it with the ingest skill.
 - `unreadable`: a broken symlink or a permission error. Report it.
 
 ## Index
@@ -152,15 +161,44 @@ uv run "$OKF/scripts/okf.py" index "$KB" --catalog  # also write catalog.jsonl a
 - The generated list sits between `<!-- okf:index:start -->` and
   `<!-- okf:index:end -->`. Never edit inside the markers. To change an entry, edit the
   note's frontmatter and run index again.
-- Text outside the markers stays as it is. Put a hand-written intro there. The root
+- Without `--adopt`, text outside the markers stays as it is. Put a hand-written intro there. The root
   `okf_version` frontmatter also stays.
-- If an `index.md` already has a hand-written list, index adds its block below that
-  list, so each entry shows twice. Ask the user before you remove the old list.
+- An `index.md` with no markers that already lists notes or subfolders of its folder is
+  hand-written. Index
+  leaves it as it is, and the summary line says `skipped N hand-written (use --adopt)`.
+  An `index.md` with only prose gets the block added below the prose.
 - Index never writes in a `sources` or `inbox` folder.
 - `--catalog` writes one JSON line per note with `path`, `type`, `title`, `description`,
-  and `updated` when the note has it. Use it to search a large knowledge base. Add
-  `--catalog` to `--check` to check this file too.
+  and `updated`. The `updated` value comes from `updated`, else `timestamp`, else
+  `generated.at`, and is empty when the note has none. Use it to search a large
+  knowledge base. Add `--catalog` to `--check` to check this file too.
+- Index keeps each `index.md` at 8 KB or less when it can. In a large folder it drops
+  the descriptions. If that is not enough, it lists each type as one line, such as
+  `* 1000 notes. Search catalog.jsonl (okf index --catalog) or grep.` When you see that
+  line, grep `catalog.jsonl` (run index with `--catalog` if the file is missing) or grep
+  the folder. Do not open the notes one by one.
 - A second run changes nothing. `--check` suits CI and the time before a commit.
+
+### Adopt a hand-written index
+
+`--adopt` takes over each hand-written `index.md`. It removes each bullet whose links
+all point to entries of that folder's own block (its notes and subfolders), unless text
+hangs off the bullet (a wrapped line, an indented paragraph, or child bullets). It
+removes the headings left empty, and keeps all other text, links, and code. Then it adds the block. Later runs update the block
+only.
+
+Ask the user before you adopt. A removed bullet takes its hand-written text with it,
+such as a description.
+
+1. List the files that `--adopt` would change. Show the list to the user:
+   ```bash
+   uv run "$OKF/scripts/okf.py" index "$KB" --check --adopt
+   ```
+2. If the knowledge base is a git repo, ask the user to commit first, so `git diff`
+   shows each removed line and `git restore` can undo the change.
+3. When the user agrees, run `uv run "$OKF/scripts/okf.py" index "$KB" --adopt`.
+4. Show the user the removed lines that held more than a link. Put back the text the
+   user wants to keep, outside the markers.
 
 ## Query
 
@@ -168,7 +206,8 @@ Answer from the notes and cite the files you read. Read narrowly. A knowledge ba
 hold thousands of files, so do not load sources wholesale.
 
 1. Read the root `index.md`. Go down through the folder `index.md` files toward the
-   subject. If there is no root `index.md`, go to step 2.
+   subject. If there is no root `index.md`, or an index lists a type only as a note
+   count, go to step 2.
 2. Search with your search tool or grep:
    ```bash
    grep -i "<keyword>" "$KB/catalog.jsonl"                  # if catalog.jsonl exists
@@ -202,8 +241,8 @@ save it as a note. Write it only when the user agrees.
 4. Cite sources under a `# Citations` heading. Write each link relative to the new note's
    folder. From `wiki/concepts/x.md`, a source is `../../raw/<site>/<page>.md`.
 5. Run index, then check. A `dead-link` warning on the new note means a bad citation
-   path. Fix it. Check does not test links that go above the root, such as
-   `../../raw/` from `wiki/`. Make sure those files exist.
+   path. Fix it. Check does not test links that go above the root, such as a link
+   into `raw/` when you check only `wiki/`. Make sure those files exist.
 6. If the folder has a `log.md`, add a `**Query**` entry under today's `## YYYY-MM-DD`
    heading. Keep the newest date first.
 
@@ -226,6 +265,9 @@ ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit
 - The hook finds the CLI through `OKF_HOME` (default `~/code/okf`). If the okf clone is
   somewhere else, the user must export `OKF_HOME` in the shell profile.
 - Commit `.okf-baseline`. The hook stages it each time it writes a new count.
+- When the hook blocks a commit, it lists the hard failures in changed files (staged,
+  unstaged, and untracked). If none of them has one, it lists the first 20 in the repo.
+  Fix the files it names.
 - To skip the hook once, use `git commit --no-verify`.
 
 The same ratchet works without the hook, for example in CI:
@@ -236,6 +278,20 @@ uv run "$OKF/scripts/okf.py" check "$KB" --baseline "$KB/.okf-baseline"
 
 The first run stores the count. Later runs exit 1 only if hard failures rose above the
 stored count, and they store the lower count when failures fall.
+
+## Types
+
+The types command counts the notes of each `type`, most used first. Use it to choose a
+type for a new note, and to propose a `[types]` table (see Config).
+
+```bash
+uv run "$OKF/scripts/okf.py" types "$KB"
+```
+
+Each line shows a count and a type. When `okf.toml` has a `[types]` table, each line
+also says `approved`, `alias of X`, or `unknown`. The last line says what share of the
+typed notes the top 20 types cover. Ask the user before you add or change `[types]`,
+because check then warns `unknown-type` for every note outside it.
 
 ## Config
 
@@ -249,6 +305,12 @@ key is optional. Copy `$OKF/okf.toml.example` to start.
   each inbox file that no note links to.
 - `meta`: agent and repo files that need no OKF frontmatter. Their links are still
   checked. Default: `README.md`, `AGENTS.md`, and `CLAUDE.md` at any depth.
+- `[types]`: the approved note types. Each key is a type, and its list holds aliases,
+  for example `Playbook = ["play", "runbook"]`. Another case of a key counts as an alias
+  of it, because index lists each exact value under its own heading. With this table,
+  check warns `unknown-type` for any other type. It is never a hard failure. An empty
+  table flags every typed note. Put the table last in the file, because TOML puts every
+  key after `[types]` inside the table.
 
 Globs use fnmatch on paths relative to the root, and `*` also matches across folders. A
 key you set replaces its default. If you set `sources`, keep `raw/*` and `*/raw/*` in

@@ -1,4 +1,4 @@
-# okf.toml: optional config for `okf.py check`. Copy it to the root of your
+# okf.toml: optional config for `okf.py check`, `index`, and `types`. Copy it to the root of your
 # knowledge base as okf.toml. Every key is optional. A key you set replaces its default.
 # Globs use fnmatch on paths relative to the root, and `*` also matches across folders.
 # Dot-folders (.git, .obsidian, .claude, ...) are always skipped.
@@ -17,3 +17,12 @@ inbox = ["_inbox/*", "transcripts/*"]
 # Agent and repo files that need no OKF frontmatter, but whose links and routes
 # are still checked. Default: README.md, AGENTS.md, CLAUDE.md at any depth.
 meta = ["README.md", "*/README.md", "AGENTS.md", "*/AGENTS.md", "CLAUDE.md", "*/CLAUDE.md"]
+
+# Approved note types. Each key is a type, and its list holds aliases. Another case of a key is an alias.
+# With this table, `okf.py check` warns "unknown-type" for any other type, and names the
+# approved type when the value is an alias. It is never a hard failure. Without it, any type passes.
+# `okf.py types` counts the notes of each type, so you can see which types to approve.
+# Keep this table last: TOML puts every key after [types] inside it. Remove the # to use it.
+# [types]
+# Concept = []
+# Playbook = ["play", "runbook"]

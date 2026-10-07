@@ -11,12 +11,24 @@ if out=$(uv run -q "$OKF/scripts/okf.py" check . --all --baseline .okf-baseline 
   exit 0
 fi
 printf '%s\n' "$out" | tail -1
-staged=$(git diff --cached --name-only)
-echo "Hard failures in staged files:"
-printf '%s\n' "$out" | grep -E '^  .*: (no-frontmatter|bad-frontmatter|no-type|index-frontmatter|log-heading|log-order)' |
-while IFS= read -r line; do
+fails=$(printf '%s\n' "$out" | grep -E '^  .*: (no-frontmatter|bad-frontmatter|no-type|index-frontmatter|log-heading|log-order)')
+[ -n "$fails" ] || exit 1  # okf.py itself failed, and the line above says why
+# Name the culprit: hard failures in changed files (staged, unstaged, untracked), else in any file.
+# quotePath=false keeps spaces and accents unquoted, so names match check's output.
+# ponytail: a path with a tab, newline, quote, or backslash stays quoted and unmatched. Parse -z output if that bites.
+git="git -c core.quotePath=false"
+where="changed files"
+changed=$($git diff --cached --name-only; $git diff --name-only; $git ls-files --others --exclude-standard)
+hits=$(printf '%s\n' "$fails" | while IFS= read -r line; do
   f=${line#  }
   f=${f%%: *}
-  printf '%s\n' "$staged" | grep -qxF -- "$f" && echo "$line"
-done
+  printf '%s\n' "$changed" | grep -qxF -- "$f" && echo "$line"
+done)
+if [ -z "$hits" ]; then
+  where="the repo (none in changed files, so check okf.toml), first 20"
+  hits=$(printf '%s\n' "$fails" | head -n 20)
+fi
+echo "Hard failures in $where:"
+printf '%s\n' "$hits"
+echo "Fix them, or skip this check once with: git commit --no-verify"
 exit 1

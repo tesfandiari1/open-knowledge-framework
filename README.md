@@ -33,14 +33,18 @@ And three operations run over it: **Ingest** (file new sources and integrate the
 For your own material: notes, transcripts, exports, research, anything you can save as text.
 
 ```bash
-git clone <this-repo> okf && okf/scripts/new_space.sh ~/my-space
+git clone <this-repo> ~/code/okf && ~/code/okf/scripts/new_space.sh ~/my-space
 ```
 
 This stands up the full three-layer layout with the schema in place. It is self-contained and vendor-neutral: point any agent at `AGENTS.md` (Claude Code, Codex, Cursor, a local model) and it knows how to operate the space. Then:
 
 1. Record your conventions in `AGENTS.md` §3 (taxonomy, `type` vocabulary, tags).
-2. Drop a source into `raw/` and ask your agent to ingest it.
-3. Ask questions. Ask for a lint now and then. Commit as you go.
+2. Give your agent a source (a file, pasted text, a URL, or a folder) and ask it to ingest it. The ingest skill (`skills/ingest`, `okf:ingest` in Claude Code) saves the source unchanged in `raw/`, writes typed notes in `wiki/` that link to it, and runs index and check. In Claude Code, install the plugin as in Quick start 2. For other agents, see "Use the skills in other agents" below.
+3. Check the space. Each Markdown file in `raw/` that no note links to yet shows as `unprocessed`. Ask your agent to ingest those, then check again:
+   ```bash
+   uv run ~/code/okf/scripts/okf.py check ~/my-space
+   ```
+4. Ask questions. Ask for a lint now and then. Commit as you go.
 
 ## Quick start 2: a documentation knowledge base (Claude Code)
 
@@ -62,6 +66,7 @@ Then just talk to it:
 
 | Skill | What it does |
 |---|---|
+| `okf:ingest` | Turn a file, pasted text, a URL, or a folder into typed, linked notes |
 | `okf:topic` | Scrape one or more sites into a new topic |
 | `okf:refresh` | Re-scrape an existing topic and report the delta |
 | `okf:okf` | Check, index, and query any knowledge base, with citations |
@@ -76,7 +81,7 @@ The knowledge base lives at `~/code/knowledge-base` by default (set `OKF_KB_ROOT
 uv run scripts/okf.py check ~/my-notes
 ```
 
-In a space made by `new_space.sh`, check the `wiki/` folder. The space root also holds `AGENTS.md` and the rulebook, which are not notes.
+In a space made by `new_space.sh`, check the space folder. Its `okf.toml` marks the rulebook docs as meta and `raw/` as the inbox.
 
 Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2. Every note has parseable frontmatter with a non-empty `type`, and every `index.md` and `log.md` is well formed. The command exits 1 when any rule fails. Warnings cover the rest:
 - missing descriptions
@@ -84,11 +89,12 @@ Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2
 - dead paths in `AGENTS.md` and `CLAUDE.md`
 - missing images
 - ambiguous duplicate names
-- index files over 4 KB
+- index files over 8 KB
+- note types that the `[types]` table in `okf.toml` does not approve, when that table exists
 - inbox files that no note links to yet
 - agent instructions that load on every turn (`CLAUDE.md`, its `@imports`, and unscoped `.claude/rules`) over 16 KB, about 4,000 tokens
 
-Output lists at most 20 findings per kind (`--all` lists every one). To tell the checker which folders hold sources, inbox material or files to skip, copy `okf.toml.example` to your root as `okf.toml`. Test: `uv run tests/test_okf.py`.
+Output lists at most 20 findings per kind (`--all` lists every one). To tell the checker which folders hold sources, inbox material or files to skip, copy `okf.toml.example` to your root as `okf.toml`. Tests: `uv run tests/test_okf.py` and `sh tests/test_scaffold.sh`.
 
 **Build the indexes.** `index` writes an `index.md` in each folder that holds notes. It lists the subfolders and the notes, grouped by `type`, with each note's description. An agent can then find a note without opening every file:
 
@@ -96,15 +102,32 @@ Output lists at most 20 findings per kind (`--all` lists every one). To tell the
 uv run scripts/okf.py index ~/my-notes
 ```
 
-The generated list sits between `<!-- okf:index:start -->` and `<!-- okf:index:end -->`. The command never changes text outside the markers, so a hand-written intro and the root `okf_version` stay as they are. It never writes in source or inbox folders, and a second run changes nothing. `--check` writes nothing and exits 1 if any index is out of date. `--catalog` also writes `catalog.jsonl` at the root, one JSON line per note, for search in a large knowledge base.
+The generated list sits between `<!-- okf:index:start -->` and `<!-- okf:index:end -->`. Without `--adopt`, the command never changes text outside the markers, so a hand-written intro and the root `okf_version` stay as they are. It never writes in source or inbox folders, and a second run changes nothing. `--check` writes nothing and exits 1 if any index is out of date. `--catalog` also writes `catalog.jsonl` at the root, one JSON line per note, for search in a large knowledge base.
 
-**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when hard failures rise above the stored count. It stores the current count in `.okf-baseline`, and that count only goes down. It checks the whole working tree, so a bad file that is not staged can also block a commit:
+Index keeps each `index.md` at 8 KB or less when it can. In a large folder, it drops the descriptions. If the file is still too big, it lists each type as one line, such as `* 1000 notes. Search catalog.jsonl (okf index --catalog) or grep.` The folder list always stays in full. If the text outside the markers is over 8 KB by itself, the block stays in full.
+
+An `index.md` with no markers that already lists the notes or subfolders its block would list is hand-written. Index leaves it as it is and reports `skipped N hand-written (use --adopt)`. `--adopt` takes it over. It removes each bullet whose links all point to entries of that folder's own block, unless text hangs off the bullet (a wrapped line, an indented paragraph, or child bullets). Code stays as it is. It removes the headings left empty and keeps all other text and links. Then it adds the block. Bullet text such as a hand-written description goes with the bullet, so list the files first and commit before you adopt:
+
+```bash
+uv run scripts/okf.py index ~/my-notes --check --adopt   # list the files --adopt would change
+uv run scripts/okf.py index ~/my-notes --adopt
+```
+
+**Approve note types.** `types` counts the notes of each type, most used first, and says how much of the knowledge base the top 20 types cover:
+
+```bash
+uv run scripts/okf.py types ~/my-notes
+```
+
+To fix the vocabulary, add a `[types]` table to `okf.toml` (see `okf.toml.example`). Each key is an approved type, and its list holds aliases. Another case of a key, such as `concept` for `Concept`, counts as an alias. `types` then marks each line `approved`, `alias of X`, or `unknown`, and check warns `unknown-type` for each note whose type is not approved. It is never a hard failure. An empty `[types]` table flags every typed note.
+
+**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when hard failures rise above the stored count. It stores the current count in `.okf-baseline`, and that count only goes down. It checks the whole working tree, so a bad file that is not staged can also block a commit. When it blocks, it lists the hard failures in changed files (staged, unstaged, and untracked), else the first 20 in the repo. Install it in your knowledge base repo:
 
 ```bash
 cd ~/my-notes && ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit   # export OKF_HOME if okf lives elsewhere
 ```
 
-**Use the skill in other agents.** `skills/okf` follows the open [Agent Skills](https://agentskills.io) format, so agents other than Claude Code can load it. Copy or symlink `skills/okf` into that agent's skills folder, and set `OKF_HOME` to your okf clone.
+**Use the skills in other agents.** `skills/okf` and `skills/ingest` follow the open [Agent Skills](https://agentskills.io) format, so agents other than Claude Code can load them. Copy or symlink each folder into that agent's skills folder, and set `OKF_HOME` to your okf clone.
 
 ## What's in the repo
 
@@ -118,9 +141,10 @@ scripts/                   Scaffolds + the Firecrawl ingestion pipeline
   okf.py                   Check and index any knowledge base
   new_space.sh             Stand up a private knowledge space anywhere
   new_topic.sh             Scaffold a scraped-docs topic
-skills/                    Agent skills: okf (check, index, query), topic, refresh
+skills/                    Agent skills: okf (check, index, query), ingest, topic, refresh
 hooks/pre-commit           Blocks a commit when hard failures rise
 tests/test_okf.py          Tests for okf.py
+tests/test_scaffold.sh     Tests for new_space.sh and the hook
 okf.toml.example           Config template for check and index
 .claude-plugin/            Plugin + marketplace manifests (this repo installs as a plugin)
 ```
