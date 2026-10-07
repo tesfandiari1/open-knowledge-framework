@@ -180,8 +180,7 @@ def main():
             path = path[len(args.strip_path_prefix):]
         path = path.strip("/")
         # drop a trailing .html so docs.rs items become clean .md names
-        if path.endswith(".html"):
-            path = path[:-5]
+        path = path.removesuffix(".html")
         rel = path if path else "index"
         records.append({"rel": rel, "meta": meta, "md": md, "src": src})
 
