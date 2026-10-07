@@ -24,8 +24,9 @@ date="$(date +%Y-%m-%d)"
 # regex or URL fragment inside extra_flags.)
 rows="$(awk '/^```sources/{f=1;next} /^```/{f=0} f' "$sources" \
         | sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d')"
-[ -n "$rows" ] || { echo "no site rows in $sources (fill the \`\`\`sources block)" >&2; exit 1; }
+[ -n "$rows" ] || { echo "no site rows in $sources (put rows inside the \`\`\`sources block, above its closing \`\`\`)" >&2; exit 1; }
 
+failed=0  # a failed URL must not stop the conversion of the pages that did scrape
 while IFS=$'\t' read -r site map_url base_tags extra; do
   [ -z "${site:-}" ] && continue
   site="$(echo "$site" | xargs)"; map_url="$(echo "$map_url" | xargs)"
@@ -48,7 +49,7 @@ while IFS=$'\t' read -r site map_url base_tags extra; do
     continue
   fi
 
-  bash "$SCRIPTS_DIR/scrape_urls.sh" "$urls" "$rawjson"
+  bash "$SCRIPTS_DIR/scrape_urls.sh" "$urls" "$rawjson" || failed=1
   # Tokenize extra_flags honoring the shell-style quoting authored in SOURCES.md,
   # so a quoted regex reaches Python as one bare argument (no literal quote chars,
   # backslashes preserved). eval runs trusted local config; treat SOURCES.md as code.
@@ -61,5 +62,6 @@ while IFS=$'\t' read -r site map_url base_tags extra; do
 done <<< "$rows"
 
 echo
-echo "Done. Now regenerate $topic/wiki/index.md and append an Ingest entry to"
+echo "Done. Now regenerate $topic/wiki/index.md and add an Ingest entry at the top of"
 echo "$topic/wiki/log.md (light-wiki path — see $topic/AGENTS.md)."
+[ "$failed" = 0 ] || { echo "Some URLs failed (see the FAIL lines above). Re-run to retry them." >&2; exit 1; }

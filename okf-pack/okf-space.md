@@ -79,15 +79,12 @@ Record whatever you choose in §3 below.
    `concept-authoring.md` + this spec.
 2. **Initialize git** (recommended). The wiki is just Markdown — git gives you
    history, diffs, branching, and collaboration for free. Commit after each ingest.
-3. **Seed the wiki root.** Create `wiki/index.md` with the one permitted root
-   frontmatter key and empty sections to be filled as concepts arrive:
+3. **Seed the wiki root.** Create `wiki/index.md` with only the one permitted root
+   frontmatter key. `okf.py index` writes the sections as notes arrive:
    ```markdown
    ---
    okf_version: "0.1"
    ---
-   # Sources
-   # Entities
-   # Concepts
    ```
 4. **Record your conventions** in §3 of this file (subdirectory taxonomy, `type`
    vocabulary, tags, any extension frontmatter keys). This is the part you and the
@@ -138,7 +135,9 @@ The ingest skill (`okf:ingest` in Claude Code) runs this flow. Any agent can fol
    `updated` dates, and cites the raw file under `# Citations`.
 4. Run `okf.py index` and `okf.py check` on the space folder. Fix each new hard failure.
    Check lists each Markdown file in raw/ that no note links to yet as `unprocessed`.
-5. Add an `**Ingest**` entry to `wiki/log.md`, then commit.
+5. Add an `**Ingest**` entry at the top of `wiki/log.md`, directly under `# Update Log`.
+   Put it under today's `## YYYY-MM-DD` heading, and reuse that heading if it is
+   already there. Then commit.
 
 For a whole documentation site, use `okf:topic` (new topic) or `okf:refresh` (existing
 topic). They scrape the pages into `raw/`, and the wiki stays a thin index over them.
@@ -159,8 +158,9 @@ explorations compound instead of vanishing into chat history.
    a generated page.
 4. **File worthwhile answers back as new concepts.** A comparison you asked for, an
    analysis, a discovered connection — write it as a conformant concept under
-   wiki/concepts/ (per `concept-authoring.md` + rulebook §11), index it, and append
-   a `**Query**` log entry noting what was asked and what was filed.
+   wiki/concepts/ (per `concept-authoring.md` + rulebook §11), and index it. Add a
+   `**Query**` log entry that says what was asked and what was filed, at the top of
+   the log under today's `## YYYY-MM-DD` heading, as for Ingest.
 
 ### 4.3 Lint — health-check the wiki
 
@@ -179,7 +179,8 @@ Periodically audit the wiki's health and surface work to do (the `okf` skill).
 
 **Output:** a lint report + a list of suggested new questions to investigate and
 sources to find. Apply the mechanical fixes (links, index/log regeneration); leave
-contradictions and gaps for you to adjudicate. Append a `**Lint**` log entry.
+contradictions and gaps for you to adjudicate. Add a `**Lint**` log entry at the top
+of the log under today's `## YYYY-MM-DD` heading, as for Ingest.
 
 ---
 
@@ -248,7 +249,7 @@ grows.
 
 - [ ] `raw/` and `wiki/` created; pack files (`okf-rulebook.md` + `concept-authoring.md` + this spec) in place
 - [ ] `git init`; first commit
-- [ ] `wiki/index.md` seeded with `okf_version: "0.1"` and empty sections
+- [ ] `wiki/index.md` seeded with only `okf_version: "0.1"`
 - [ ] Conventions recorded in §3 (subdirs, `type` vocabulary, tags, extension keys)
 - [ ] First source added to `raw/`; **Ingest** run (§4.1); result validated (§7) and committed
 - [ ] Cadence chosen: supervised one-at-a-time vs. batch — noted in §3

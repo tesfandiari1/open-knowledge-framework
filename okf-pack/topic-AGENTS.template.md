@@ -24,12 +24,14 @@ firecrawl markdown is the product; the wiki is a thin layer on top of it.
 
 **Default (≈ zero LLM tokens) — do this on every ingest:**
 1. Scrape into `raw/` per `raw/SOURCES.md` (the okf plugin's `scrape_topic.sh {{TOPIC}}`).
-   Resumable and idempotent: it re-pulls only new or changed URLs (unchanged ones are
-   skipped), and regenerates each site's mechanical `raw/<site>/CONTENTS.md`.
+   It skips URLs already cached locally, so set `OKF_RESCRAPE=1` to fetch them again.
+   It regenerates each site's mechanical `raw/<site>/CONTENTS.md`.
 2. Regenerate `wiki/index.md` so its `# Sources` section catalogs the raw sites — one
    bullet per site: `* [<site>](../raw/<site>/CONTENTS.md) - <one-line description>`.
    Also list any concept pages that exist under `# Concepts`.
-3. Append an `**Ingest**` entry to `wiki/log.md`.
+3. Add an `**Ingest**` entry at the top of `wiki/log.md`, directly under `# Update Log`.
+   Put it under today's `## YYYY-MM-DD` heading, and reuse that heading if it is
+   already there.
 
 That's it. **Do NOT** read and rewrite every scraped page into concept documents
 by default — a topic may be hundreds of pages / hundreds of thousands of words, and a

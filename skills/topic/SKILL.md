@@ -19,9 +19,9 @@ KB's own pipeline scripts; it does not reinvent scraping.
   directory this skill loaded from (two levels up from this SKILL.md).
 - **Knowledge base root:** `${OKF_KB_ROOT:-$HOME/code/knowledge-base}`. Resolve it
   once at the start: `KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"`. The KB is a
-  plain data directory. If `$KB` does not exist yet, confirm the location with the
-  user (they can set `OKF_KB_ROOT` to move it) — `new_topic.sh` then creates and
-  seeds it, including a copy of `okf-pack/`.
+  plain data directory. If `$KB` does not exist and `OKF_KB_ROOT` is unset, confirm
+  the default location with the user. If `OKF_KB_ROOT` is set, the user chose it, so
+  do not ask. `new_topic.sh` creates and seeds the KB, including a copy of `okf-pack/`.
 - **Light wiki by default.** The scraped Markdown is the product. Do **not** read
   and rewrite scraped pages into OKF concept documents — a topic can be hundreds of
   pages and that burns tokens for little gain. The wiki layer is just a mechanical
@@ -31,8 +31,8 @@ KB's own pipeline scripts; it does not reinvent scraping.
 - **Output is auto-cleaned.** `firecrawl_to_md.py` sets frontmatter `description` from
   the page's own `metadata.description` (heuristic fallback only when absent) and strips
   docs-platform chrome (e.g. Mintlify llms.txt blockquotes, skip-links, anchor permalinks).
-  Do not hand-edit scraped Markdown; if a new site leaks chrome, add a rule in
-  the plugin's `scripts/firecrawl_to_md.py`, never per-topic.
+  Do not hand-edit scraped Markdown or the installed plugin's scripts. If a new site
+  leaks chrome, tell the user which pattern leaked, so they can fix it in the okf repo.
 - Each topic is one OKF space: `topics/<slug>/{AGENTS.md, raw/, wiki/}`. See
   `$OKF/okf-pack/okf-space.md` for the full model.
 
@@ -42,7 +42,7 @@ KB's own pipeline scripts; it does not reinvent scraping.
 ```bash
 OKF="${CLAUDE_PLUGIN_ROOT}"   # plugin root; if unset, use this skill's plugin directory
 KB="${OKF_KB_ROOT:-$HOME/code/knowledge-base}"
-[ -d "$KB" ] || echo "KB will be created at $KB — confirm with the user first"
+[ -d "$KB" ] || [ -n "${OKF_KB_ROOT:-}" ] || echo "KB will be created at $KB. Confirm with the user first."
 ```
 Pick a short kebab-case `slug` for the topic (e.g. `bun`, `svelte-5`). If
 `topics/<slug>/` already exists, this is a refresh — use **okf:refresh** instead.
@@ -74,7 +74,8 @@ confirm before scraping. For a handful of known URLs, write them straight into t
 
 ### Step 4 — Declare the source in SOURCES.md
 Add one **TAB-separated** row per site inside the ```` ```sources ```` block of
-`topics/<slug>/raw/SOURCES.md`. Columns: `site_slug⇥map_url⇥base_tags⇥extra_flags`.
+`topics/<slug>/raw/SOURCES.md`, above its closing ```` ``` ```` line. Columns:
+`site_slug⇥map_url⇥base_tags⇥extra_flags`.
 - `base_tags`: comma-separated, lowercase (e.g. `bun,runtime`).
 - `extra_flags`: optional firecrawl_to_md.py flags, quoted normally —
   `--strip-title-suffix "\s*[-|]\s*Bun\s*$"`, `--strip-path-prefix /docs`, `--skip-404`.
@@ -90,24 +91,35 @@ Add one **TAB-separated** row per site inside the ```` ```sources ```` block of
 **Background it for more than ~20 URLs.** At ~2–3s/page and 5 concurrent, a large
 topic easily exceeds a foreground command's time limit. Run it detached and poll the
 log — e.g. `... > "$KB/.firecrawl/scrape-<slug>.log" 2>&1 &` (or your Bash tool's
-background mode), then `tail` the log until it prints the "Wrote N markdown files" line.
+background mode), then `tail` the log until it prints the "Wrote N markdown files" line
+or "URL(s) failed". On failure, each `! FAIL` line shows the error. Fix the cause, then
+re-run.
 
 Resumable and idempotent. If a `.urls.txt` was newly created by the script's own
 `map`, it writes the list and stops for curation — curate, then re-run. This scrapes
 each URL to JSON (cached in `.firecrawl/raw-<slug>-<site>/`), transforms it to
 frontmattered, auto-cleaned Markdown under `raw/<site>/`, and regenerates each site's
-`CONTENTS.md`. Because the JSON is cached, re-running after a transform change re-derives
-all Markdown for **free** (no re-scrape).
+`CONTENTS.md`. Because the JSON is cached, a plain re-run only rebuilds the Markdown
+from the local cache for **free** (no re-scrape). `OKF_RESCRAPE=1` fetches every URL again.
 
 ### Step 6 — Refresh the light wiki (mechanical, ~free)
 Update `topics/<slug>/wiki/index.md` so its `# Sources` section links each scraped
-site's `../raw/<site>/CONTENTS.md` with a one-line description, then append an
-`**Ingest**` entry (today's date) to `topics/<slug>/wiki/log.md`. Keep `# Concepts`
-empty unless the user asked for synthesis. (Mirror the existing topics' wiki seeds.)
+site's `../raw/<site>/CONTENTS.md` with a one-line description. Then add an
+`**Ingest**` entry at the top of `topics/<slug>/wiki/log.md`, directly under
+`# Update Log`. Put it under today's `## YYYY-MM-DD` heading, and reuse that heading if
+it is already there. Keep `# Concepts` empty unless the user asked for synthesis.
+(Mirror the existing topics' wiki seeds.)
 
-### Step 7 — Report
-Tell the user: topic path, sites + page counts, and how to reference it
-(`topics/<slug>/raw/` verbatim, or `wiki/index.md` to navigate). If anything was
+### Step 7 — Check
+```bash
+uv run -q "$OKF/scripts/okf.py" check "$KB"
+```
+Fix every HARD finding before you report, then run check again to confirm.
+
+### Step 8 — Report
+Tell the user: the absolute topic path, sites + page counts, and how to reference it
+(`topics/<slug>/raw/` verbatim, or `wiki/index.md` to navigate). Get the path from
+`echo "$(cd "$KB" && pwd)/topics/<slug>"`, never a variable name. If anything was
 dropped during curation, say what and why (don't silently truncate).
 
 ## Example
@@ -118,8 +130,9 @@ User: "Scrape the Bun docs into my knowledge base."
 3. `firecrawl map https://bun.sh/docs …` → `raw/bun-docs.urls.txt`; drop `/blog`, locales; ~90 URLs left; confirm with user.
 4. SOURCES row: `bun-docs⇥https://bun.sh/docs⇥bun,runtime⇥--strip-title-suffix "\s*\|\s*Bun\s*$"`.
 5. `scrape_topic.sh bun` → `raw/bun-docs/*.md` + `CONTENTS.md`.
-6. Refresh `wiki/index.md` + log Ingest.
-7. Report: "topics/bun — 88 pages from bun.sh; reference topics/bun/raw/."
+6. Refresh `wiki/index.md` + log Ingest at the top of `wiki/log.md`.
+7. `okf.py check "$KB"`: conformant.
+8. Report: "/Users/me/code/knowledge-base/topics/bun: 88 pages from bun.sh. Reference topics/bun/raw/."
 
 ## Troubleshooting
 

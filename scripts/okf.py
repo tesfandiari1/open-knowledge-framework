@@ -190,8 +190,9 @@ def check(root, cfg=None):
     stats, type_counts = Counter(), Counter()
     concept_stems = defaultdict(list)
 
-    def alive(target, src):
-        """Resolve one link target the way common viewers do. Record it. Return False if dead.
+    def alive(target, src, note):
+        """Resolve one link target the way common viewers do. Return False if dead.
+        Record the target when src is a note, so only a note's link marks an inbox file processed.
 
         Wikilinks match a bare name anywhere or a path suffix (Obsidian). Markdown links
         match relative to the file, then relative to the root (the OKF spec examples use
@@ -199,19 +200,20 @@ def check(root, cfg=None):
         A /link starts at the note's bundle root, the nearest folder above it whose index.md
         has okf_version, such as wiki/ in a space made by new_space.sh.
         """
+        seen = refs if note else set()
         if target.startswith("[["):
             t = target[2:].strip().lstrip("/").lower()
-            refs.update({t, t + ".md", posixpath.basename(t), posixpath.basename(t) + ".md"})
+            seen.update({t, t + ".md", posixpath.basename(t), posixpath.basename(t) + ".md"})
             return t in suffixes or t + ".md" in suffixes
         if SCHEME.match(target) or target.startswith("#"):
             return True
         raw = unquote(target.split("#")[0].split("?")[0])
-        for b in (bundle_of(src, roots) if raw.startswith("/") else posixpath.dirname(src), ""):
+        for i, b in enumerate((bundle_of(src, roots) if raw.startswith("/") else posixpath.dirname(src), "")):
             path = posixpath.normpath(posixpath.join(b, raw.lstrip("/")))
             t = path.lower()
-            if t.startswith(".."):
-                return True  # outside the bundle, not ours to judge
-            refs.update({t, posixpath.basename(t)})
+            if t.startswith(".."):  # outside the bundle, not ours to judge. Only the root retry
+                return i == 0       # leaves it on a bad path, such as ../raw/x.md one folder too shallow.
+            seen.update({t, posixpath.basename(t)})
             if (t in lower or t + ".md" in lower or t in dirs or t == "."
                     or os.path.exists(os.path.join(root, path))):  # dot-folders are not walked
                 return True
@@ -230,6 +232,7 @@ def check(root, cfg=None):
         if is_source(rel):
             stats["sources"] += 1
             continue
+        note = False
         if name == "index.md":
             stats["index"] += 1
             fm, err = frontmatter(text)
@@ -249,6 +252,7 @@ def check(root, cfg=None):
         elif is_meta(rel):
             stats["meta"] += 1
         else:
+            note = True
             stats["notes"] += 1
             concept_stems[name[:-3]].append(rel)
             fm, err = frontmatter(text)
@@ -267,13 +271,13 @@ def check(root, cfg=None):
 
         body = INLINE_CODE.sub("", FENCE.sub("", text))
         for t in MD_LINK.findall(body) + ["[[" + w.strip().rstrip("\\") + "]]" for w in WIKI_LINK.findall(body)]:
-            if not alive(t.removesuffix("]]"), rel):
+            if not alive(t.removesuffix("]]"), rel, note):
                 ext = posixpath.splitext(t.removesuffix("]]").split("#")[0].rstrip("/"))[1].lower()
                 asset = re.fullmatch(r"\.[a-z0-9]{1,5}", ext) and ext != ".md"
                 findings.append(("missing-asset" if asset else "dead-link", rel, t))
         if name in ROUTING_FILES:
             for t in ROUTE.findall(text):
-                if not alive(t, rel):
+                if not alive(t, rel, note):
                     findings.append(("dead-route", rel, t))
 
     loaded = always_loaded(root)

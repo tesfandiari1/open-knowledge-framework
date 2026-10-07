@@ -59,6 +59,7 @@ the scrape continues (scrape_topic.sh pauses for this if the file is new).
 
 \`\`\`sources
 # site_slug	map_url	base_tags	extra_flags
+\`\`\`
 EOF
 
 # wiki seed (OKF root: only index.md may carry okf_version)

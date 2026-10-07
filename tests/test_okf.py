@@ -82,6 +82,17 @@ c = okf.check(bundle({
 }))[1]
 assert c == [("dead-link", "a/b/t.md", "/x.md"), ("dead-link", "wiki/sources/s.md", "/entities/gone.md")], c
 
+# A citation one folder too shallow is dead, not "outside the bundle". A link that leaves the root still passes.
+# Only a note's link marks an inbox file processed. Links from index.md and log.md do not.
+c = okf.check(bundle({
+    "okf.toml": 'inbox = ["raw/*"]\n',
+    "wiki/index.md": '---\nokf_version: "0.1"\n---\n* [b](../raw/b.md)\n',
+    "wiki/log.md": "# Log\n\n## 2026-01-01\n* [b](../raw/b.md)\n",
+    "wiki/sources/s.md": "---\ntype: Source\ndescription: S.\n---\n[a](../../raw/a.md) [a](../raw/a.md) [o](../../../o.md)\n",
+    "raw/a.md": "t\n", "raw/b.md": "t\n",
+}))[1]
+assert c == [("dead-link", "wiki/sources/s.md", "../raw/a.md"), ("unprocessed", "raw/b.md", "no note links to it")], c
+
 # Context budget: CLAUDE.md, its @imports, and unscoped rules count. Scoped rules do not.
 c = codes(bundle({
     "CLAUDE.md": "Rules. @docs/big.md and `@ignored.md` and mail me@example.com\n",
@@ -121,6 +132,9 @@ assert git("commit", "-qm", "bad", "--no-verify").returncode == 0
 Path(os.path.join(repo, "bad.md")).write_text("---\ntype: Concept\n---\n")
 git("add", "bad.md")
 assert git("commit", "-qm", "fixed").returncode == 0
+r = subprocess.run(["sh", os.path.join(env["OKF_HOME"], "hooks", "pre-commit")], cwd=repo, capture_output=True,
+                   text=True, env={**env, "OKF_HOME": os.path.join(repo, "no-okf")}, check=False)
+assert r.returncode == 1 and "okf.py not found" in r.stdout, r.stdout + r.stderr
 
 # index: layout, sort order, untouched bytes, sources left alone, idempotent, --check.
 intro = '---\nokf_version: "0.2"\n---\n# Team notes\n\nHand-written intro.\n'

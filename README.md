@@ -121,11 +121,14 @@ uv run scripts/okf.py types ~/my-notes
 
 To fix the vocabulary, add a `[types]` table to `okf.toml` (see `okf.toml.example`). Each key is an approved type, and its list holds aliases. Another case of a key, such as `concept` for `Concept`, counts as an alias. `types` then marks each line `approved`, `alias of X`, or `unknown`, and check warns `unknown-type` for each note whose type is not approved. It is never a hard failure. An empty `[types]` table flags every typed note.
 
-**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when hard failures rise above the stored count. It stores the current count in `.okf-baseline`, and that count only goes down. It checks the whole working tree, so a bad file that is not staged can also block a commit. When it blocks, it lists the hard failures in changed files (staged, unstaged, and untracked), else the first 20 in the repo. Install it in your knowledge base repo:
+**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when hard failures rise above the stored count. It stores the current count in `.okf-baseline`, and that count only goes down. It checks the whole working tree, so a bad file that is not staged can also block a commit. When it blocks, it lists the hard failures in changed files (staged, unstaged, and untracked), else the first 20 in the repo. The hook needs an okf clone, because it runs `okf.py` from `OKF_HOME` (default `~/code/okf`). The plugin alone is not enough. Do not link into the plugin cache: its path changes on every plugin update, and git skips a dangling hook with no message. Install it in your knowledge base repo:
 
 ```bash
 cd ~/my-notes && ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit   # export OKF_HOME if okf lives elsewhere
+test -e .git/hooks/pre-commit && echo linked   # no output means the link dangles
 ```
+
+If the hook cannot find `okf.py`, it blocks every commit with `okf pre-commit: okf.py not found in <folder>. Set OKF_HOME to your okf clone.`
 
 **Use the skills in other agents.** `skills/okf` and `skills/ingest` follow the open [Agent Skills](https://agentskills.io) format, so agents other than Claude Code can load them. Copy or symlink each folder into that agent's skills folder, and set `OKF_HOME` to your okf clone.
 

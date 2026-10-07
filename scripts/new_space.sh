@@ -32,16 +32,11 @@ meta = ["okf-rulebook.md", "concept-authoring.md",
         "README.md", "*/README.md", "AGENTS.md", "*/AGENTS.md", "CLAUDE.md", "*/CLAUDE.md"]
 EOF
 
-# Wiki seed (only the root index.md may carry okf_version)
+# Wiki seed: only the okf_version frontmatter. okf index writes the sections.
 cat > "$dir/wiki/index.md" <<'EOF'
 ---
 okf_version: "0.1"
 ---
-# Sources
-
-# Entities
-
-# Concepts
 EOF
 
 cat > "$dir/wiki/log.md" <<EOF

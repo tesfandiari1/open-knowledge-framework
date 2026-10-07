@@ -23,7 +23,10 @@ def read_fm(path):
     for line in fm.splitlines():
         m = re.match(r"^(\w+):\s*(.*)$", line)
         if m:
-            d[m.group(1)] = m.group(2).strip().strip('"')
+            v = m.group(2).strip()
+            if len(v) > 1 and v[0] == v[-1] == '"':  # undo firecrawl_to_md.yaml_escape
+                v = re.sub(r"\\(.)", r"\1", v[1:-1])
+            d[m.group(1)] = v
     return d
 
 
@@ -45,7 +48,7 @@ def main():
     out = [f"# {title} — Index", "",
            f"{n} documents scraped from {host} on {date}.", "",
            "Each doc carries YAML frontmatter (`title`, `description`, `source_url`, "
-           "`section`, `tags`, …). See ../README.md for the schema.", ""]
+           "`section`, `tags`, …). See ../SOURCES.md for how this folder is scraped.", ""]
     for sec in sorted(groups):
         out.append(f"## {sec}")
         out.append("")

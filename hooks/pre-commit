@@ -6,6 +6,7 @@
 # Skip once with: git commit --no-verify
 # ponytail: checks the working tree, not only staged content. Use `git stash -k` first if that matters.
 OKF="${OKF_HOME:-$HOME/code/okf}"
+[ -f "$OKF/scripts/okf.py" ] || { echo "okf pre-commit: okf.py not found in $OKF. Set OKF_HOME to your okf clone."; exit 1; }
 if out=$(uv run -q "$OKF/scripts/okf.py" check . --all --baseline .okf-baseline 2>&1); then
   printf '%s\n' "$out" | grep '^okf: baseline' && git add .okf-baseline
   exit 0

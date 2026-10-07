@@ -1,13 +1,10 @@
 ---
 name: okf
 description: >-
-  Check, index, and query any OKF knowledge base, that is, a folder of Markdown notes
-  with YAML frontmatter. Use when the user wants to check, lint, or validate a knowledge
-  base or notes folder, fix frontmatter or conformance failures, build or refresh index.md
-  files, find or look up something in the notes, answer a question from the knowledge
-  base with citations, count or approve note types, or set up the okf pre-commit guard.
-  Runs the okf.py CLI (check, index, types) and follows the okf-pack format rules. Works
-  in any agent that can run shell commands.
+  Answer what the user's notes, docs, or knowledge base say about a topic, such as
+  "what do my notes or docs say about X", with cited files. Also check, lint, or index an
+  OKF knowledge base (Markdown with YAML frontmatter): fix frontmatter failures, refresh
+  index.md files, count note types, or set up the okf pre-commit guard.
 license: MIT
 compatibility: Requires uv. The CLI gets Python 3.11+ and PyYAML through uv.
 ---
@@ -51,9 +48,11 @@ uv run "$OKF/scripts/okf.py" --help
 ## Find the knowledge base root
 
 1. Use the path the user gives.
-2. If the user gives no path, use the current folder.
-3. If the current folder has no `okf.toml` and a parent folder has one, use that parent.
-   An `okf.toml` file marks a configured root.
+2. Else use the current folder, if it holds the notes the user means. If it has no
+   `okf.toml` and a parent folder has one, use that parent. An `okf.toml` file marks a
+   configured root.
+3. Else use `$OKF_KB_ROOT`, if it is set.
+4. Else use `~/code/knowledge-base`, if it has `okf.toml`. okf:topic writes there.
 
 In an OKF space made by `new_space.sh`, the root is the space folder. Its `okf.toml`
 marks the rulebook docs as meta and `raw/` as the inbox.
@@ -86,6 +85,9 @@ The command exits 1 when any hard failure exists.
 4. Fix the reserved files: `index-frontmatter`, `log-heading`, `log-order`.
 5. Run check again. Repeat until no hard failures remain.
 6. Fix the mechanical warnings. Report the warnings that need judgment.
+7. If the knowledge base has a `log.md` (`wiki/log.md` in an OKF space), add a
+   `**Lint**` entry that lists what you fixed. Put it first under today's
+   `## YYYY-MM-DD` heading. Keep the newest date at the top.
 
 Make the smallest edit that clears each finding. Change frontmatter and headings, not
 the note body. Run check after each batch of fixes.
@@ -110,8 +112,9 @@ Rules for every fix:
   `type` and `description`. If the file is not a note, change `okf.toml` instead.
 - `no-type`: add `type: <Type>`. Choose it per `concept-authoring.md`. Prefer a type that
   the knowledge base already uses. `okf.py types` lists them (see Types).
-- `index-frontmatter`: an `index.md` may carry only `okf_version`, and only at the root.
-  Remove the other keys. If no key is left, remove the `---` lines too.
+- `index-frontmatter`: an `index.md` may carry only `okf_version`. Remove the other keys.
+  Keep `okf_version`, because it marks a bundle root, and `/links` resolve from there. If
+  no key is left, remove the `---` lines too.
 - `log-heading`: each `## ` heading in a `log.md` must start with an ISO date, for
   example `## 2026-05-22`. Convert other date formats. Change a heading that is not a
   date to `###` under its date. If the file is not an OKF log, add it to `exclude`.
@@ -218,8 +221,8 @@ hold thousands of files, so do not load sources wholesale.
    answer.
 4. Read only the files that matter. Follow their links. Stop when you can answer.
 5. Answer in the form that fits: prose, a table, or code. End with a list of citations:
-   the files you used, as paths relative to the root, for example
-   `guides/deploy/rollback.md`.
+   the files you used. Write each one as its full path from the root, for example
+   `guides/deploy/rollback.md`. Do not shorten paths under a shared prefix.
 
 - Every claim traces to a file you read. If no file supports a claim, say so. Never
   invent a citation.
@@ -253,17 +256,27 @@ Old failures do not block. The hook stores the hard-failure count in `.okf-basel
 and that count only goes down. The hook checks the whole working tree, so a bad file
 that is not staged can also block a commit.
 
-Install it from the root of the knowledge base repo:
+The hook needs an okf clone. Install it from the root of the knowledge base repo:
 
-```bash
-ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit
-```
+1. Make sure the clone has the hook:
+   ```bash
+   test -e "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" && echo found
+   ```
+   If it is not found, do not create the link. Tell the user to clone okf to
+   `~/code/okf`, or to set `OKF_HOME` to their clone.
+2. If `.git/hooks/pre-commit` exists, do not replace it. Show it to the user and ask.
+3. Link the hook, then make sure the link works:
+   ```bash
+   ln -s "${OKF_HOME:-$HOME/code/okf}/hooks/pre-commit" .git/hooks/pre-commit
+   test -e .git/hooks/pre-commit && echo linked
+   ```
 
-- If `.git/hooks/pre-commit` exists, do not replace it. Show it to the user and ask.
-- Link to a stable okf clone, not to a plugin cache folder. A plugin cache path
-  contains the version, so the link breaks on update.
+- Never link into the plugin cache. Its path changes on every plugin update. Git skips
+  a dangling hook and shows no message, so the guard stops with no warning.
 - The hook finds the CLI through `OKF_HOME` (default `~/code/okf`). If the okf clone is
-  somewhere else, the user must export `OKF_HOME` in the shell profile.
+  somewhere else, the user must export `OKF_HOME` in the shell profile. If the hook
+  cannot find `okf.py`, it blocks the commit with
+  `okf pre-commit: okf.py not found in <folder>`.
 - Commit `.okf-baseline`. The hook stages it each time it writes a new count.
 - When the hook blocks a commit, it lists the hard failures in changed files (staged,
   unstaged, and untracked). If none of them has one, it lists the first 20 in the repo.

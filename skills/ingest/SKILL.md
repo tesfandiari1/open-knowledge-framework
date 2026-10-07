@@ -1,14 +1,10 @@
 ---
 name: ingest
 description: >-
-  Turn raw input into typed, linked notes in an existing OKF knowledge base. Saves a
-  file, pasted text, a URL, or a folder unchanged in the inbox, then creates or updates
-  notes for the source and for the people, orgs, projects, and ideas in it. Each note
-  gets a type, title, description, and dates, and links back to the raw file. Runs
-  okf.py index and check until no new hard failures remain, then logs the ingest. Use
-  when the user says "ingest this", "add this transcript or doc to my knowledge base",
-  "file these notes", or "process my inbox", or gives a meeting transcript, article,
-  export, or notes file to file away. Works in any agent that can run shell commands.
+  For OKF knowledge bases (a folder with okf.toml). Saves a file, pasted text, URL, or
+  folder unchanged in the inbox, then writes typed, linked notes that cite it and runs
+  okf.py index and check. Use when the user says "ingest this", "add this to my
+  knowledge base", or "process my inbox".
 license: MIT
 compatibility: Requires uv. The CLI gets Python 3.11+ and PyYAML through uv.
 ---
@@ -20,7 +16,7 @@ the inbox, then writes or updates typed notes that link back to it. The `okf.py`
 checks the result.
 
 The format rules live in these okf-pack docs, relative to the okf folder, `$OKF` below.
-Read them before you write a note. Do not guess:
+Read them when a rule below is unclear:
 
 - `okf-pack/okf-rulebook.md`: frontmatter (section 3), links (section 5), citations
   (section 6), and `log.md` (section 9)
@@ -60,27 +56,36 @@ unprocessed files. Offer to add `inbox = ["raw/*"]` to `okf.toml`.
 Put the input in one file:
 
 - A file: use it as it is. Keep its extension.
-- Pasted text: write it to a temporary file exactly as given. Use `.md`.
-- A URL: fetch the page as Markdown with any tool you have, such as a web fetch tool or
-  `curl`. Save what the tool returns. Use `.md`. For a whole doc site, use the topic
-  skill instead.
+- Pasted text: write it exactly as given, ending with one newline, to a temporary file
+  outside the inbox. Use `.md`.
+- A URL: fetch the full page with `curl` (convert HTML with `pandoc -t gfm` if you have
+  it) or with a scraper that returns the page text. Never save output from a tool that
+  summarizes the page, such as Claude Code's WebFetch. Use `.md`. Put the URL in the
+  `Source` note's `resource` field. For a whole doc site, use the topic skill instead.
 - A folder: ingest each file in it in turn.
 
 Name the file `YYYY-MM-DD-<slug>.<ext>`, with today's date and a short kebab-case slug.
-Then save it, unless the inbox already holds the same content:
+Always save it with this command, even when notes for the same meeting already exist.
+The command is the only duplicate test. Do not judge sameness by reading files. Never
+write into the inbox with a Write tool or a heredoc:
 
 ```bash
 INBOX="$KB/raw"           # the inbox folder from above
 IN="/path/to/input"       # the input file
 mkdir -p "$INBOX"
 OUT="$INBOX/$(date +%F)-<slug>.<ext>"
-HASH=$(shasum -a 256 "$IN" | cut -d' ' -f1)
-find "$INBOX" -type f -exec shasum -a 256 {} + | grep "^$HASH " \
-  || { [ -e "$OUT" ] && echo "name taken: $OUT" || cp "$IN" "$OUT"; }
+set -- shasum -a 256; command -v shasum >/dev/null || set -- sha256sum   # hash tool
+HASH=$("$@" "$IN" | cut -d' ' -f1)
+if [ -z "$HASH" ]; then echo "no hash: nothing saved"
+elif find "$INBOX" -type f -exec "$@" {} + | grep "^$HASH "; then :
+elif [ -e "$OUT" ]; then echo "name taken: $OUT"
+else cp "$IN" "$OUT"; fi
 ```
 
 - If grep prints a line, that file already holds this content. Stop and tell the user
-  its path. If `shasum` is missing, use `sha256sum`.
+  its path.
+- If it prints `no hash`, there is no `shasum` or `sha256sum`, or `IN` is wrong. Stop
+  and tell the user.
 - If it prints `name taken`, a different file already has the name. Add `-2` to the
   slug and run it again. The command never replaces a raw file.
 - Never edit the raw file after you save it.
@@ -104,7 +109,10 @@ grep -i "<name>" "$KB/catalog.jsonl"                             # if the file e
   differs from the raw file. Check matches links by filename, so a shared name hides an
   unlinked raw file.
 - If the input contradicts a note, do not overwrite the note. Record the conflict on
-  both notes, as `concept-authoring.md` shows.
+  both notes: `> _Conflict: this note says X. [other](path) says Y (as of <date>)._`
+- If notes for the same meeting already exist, the command saved the file only because
+  its content differs. Ingest it, and record each fact that changed as a conflict or an
+  update.
 - Put notes where the knowledge base's `AGENTS.md` or `README.md` says. Else put each
   note next to notes of the same type. In an OKF space, use `wiki/sources/`,
   `wiki/entities/`, and `wiki/concepts/`.
@@ -113,8 +121,8 @@ grep -i "<name>" "$KB/catalog.jsonl"                             # if the file e
 
 Each note you create or update gets this frontmatter:
 
-- `type`: if `okf.toml` has a `[types]` table, use one of its keys. Newer okf releases
-  warn `unknown-type` for any other value. Else prefer a type that the knowledge base
+- `type`: if `okf.toml` has a `[types]` table, use one of its keys. Check warns
+  `unknown-type` for any other value. Else prefer a type that the knowledge base
   already uses (`uv run "$OKF/scripts/okf.py" types "$KB"` lists them, most used first),
   or a broad honest type from `concept-authoring.md`.
 - `title`: the display name.
@@ -123,7 +131,8 @@ Each note you create or update gets this frontmatter:
 - `created` and `updated`: ISO dates. A new note gets today's date for both. On an
   existing note, set `updated` to today and keep `created`. If `created` is missing,
   get it from git with `git log --diff-filter=A --format=%as -- <file> | tail -1`, or
-  leave it out. Never guess a date.
+  leave it out. Never guess a date. These fields replace the rulebook's `timestamp`.
+  `okf.py index` reads `updated` first.
 
 Rules for the body:
 
@@ -131,8 +140,9 @@ Rules for the body:
   such as `[1] [Atlas sync transcript](../raw/2026-10-06-atlas-weekly-sync.md)`. This
   link clears `unprocessed`.
 - Link related notes in the prose, as rulebook section 5 shows.
-- Write only what the raw file says. If a fact is missing, add a gap note, as
-  `concept-authoring.md` shows. Never invent a fact, a date, or a name.
+- Write only what the raw file says. If a fact is missing, add a gap line:
+  `> _Gap: <what is missing and what source could fill it>._` Never invent a fact, a
+  date, or a name.
 - Quote any YAML value that contains `: ` or ` #`, for example
   `title: "Atlas sync: launch moves to November 3"`.
 
@@ -145,16 +155,16 @@ uv run "$OKF/scripts/okf.py" check "$KB"
 
 - Fix each new hard failure. The okf skill lists the fix for each code. A `dead-link`
   warning on a note you wrote means a bad path. Fix the path.
-- Newer okf releases skip a hand-written `index.md` and say so in the summary line. If
-  index reports a skipped file, add a bullet for each new note to that file by hand.
+- Edit an `index.md` by hand only when index prints `skipped N hand-written`. Then add
+  a bullet to that file for each new note.
 
 ### 5. Log the ingest
 
 Add one entry to the knowledge base's `log.md` (in an OKF space, `wiki/log.md`). If
-there is no `log.md`, create one with a `# Update Log` heading. Put the entry under
-today's `## YYYY-MM-DD` heading, and add that heading above the newest date if it is
-missing. Start the entry with `**Ingest**`, then link the raw file and each note you
-created or updated.
+there is no `log.md`, create one with a `# Update Log` heading. Put the entry as the
+first bullet under today's `## YYYY-MM-DD` heading, so the newest entry is on top. Add
+that heading above the newest date if it is missing. Start the entry with `**Ingest**`,
+then link the raw file and each note you created or updated.
 
 ### Done when
 
@@ -173,7 +183,6 @@ Use this mode when the user asks you to process the inbox.
    ```
 2. Ingest each file in turn, oldest name first. Skip step 1: the file is already in the
    inbox. Do not rename it.
-3. Run index and check after each file, so that one bad note does not hide in a batch.
 
 Check lists only `.md` files. For each other file in the inbox, search for its name with
 `grep -rlF "<filename>" "$KB" --include='*.md'`. If no note names it, ingest it too.
