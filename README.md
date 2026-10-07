@@ -69,6 +69,25 @@ Then just talk to it:
 
 The knowledge base lives at `~/code/knowledge-base` by default (set `OKF_KB_ROOT` to move it). Scraping is resumable and cheap: raw docs are the product, and the agent does not rewrite pages into summaries unless you ask.
 
+## Check any knowledge base
+
+`scripts/okf.py` checks any folder of Markdown files, with any agent or viewer. It needs only [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv run scripts/okf.py check ~/my-notes
+```
+
+Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2. Every note has parseable frontmatter with a non-empty `type`, and every `index.md` and `log.md` is well formed. The command exits 1 when any rule fails. Warnings cover the rest:
+- missing descriptions
+- dead `[[wikilinks]]` and Markdown links
+- dead paths in `AGENTS.md` and `CLAUDE.md`
+- missing images
+- ambiguous duplicate names
+- index files over 4 KB
+- inbox files that no note links to yet
+
+Output lists at most 20 findings per kind (`--all` lists every one). To tell the checker which folders hold sources, inbox material or files to skip, copy `okf.toml.example` to your root as `okf.toml`. Test: `uv run tests/test_okf.py`.
+
 ## What's in the repo
 
 ```
@@ -78,6 +97,7 @@ okf-pack/                  The framework's reference layer (start here)
   concept-authoring.md     Judgment for writing one good concept on demand
   topic-AGENTS.template.md Per-topic schema seed for the doc-scraping path
 scripts/                   Scaffolds + the Firecrawl ingestion pipeline
+  okf.py                   Check any knowledge base for conformance and drift
   new_space.sh             Stand up a private knowledge space anywhere
   new_topic.sh             Scaffold a scraped-docs topic
 skills/                    Claude Code runtime: topic, refresh, query, lint

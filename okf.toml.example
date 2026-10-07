@@ -1,0 +1,19 @@
+# okf.toml: optional config for `okf.py check`. Copy it to the root of your
+# knowledge base as okf.toml. Every key is optional. A key you set replaces its default.
+# Globs use fnmatch on paths relative to the root, and `*` also matches across folders.
+# Dot-folders (.git, .obsidian, .claude, ...) are always skipped.
+
+# Files that are not checked at all. Links into them still resolve.
+exclude = ["archive/*", "templates/*"]
+
+# Immutable source material: scraped docs, exports, PDFs converted to Markdown.
+# These keep their own frontmatter and skip every check. Default: raw/ folders.
+sources = ["raw/*", "*/raw/*"]
+
+# Material waiting to be processed into notes: meeting transcripts, inbox drops.
+# Checked like sources, and each file that no note links to is reported as unprocessed.
+inbox = ["_inbox/*", "transcripts/*"]
+
+# Agent and repo files that need no OKF frontmatter, but whose links and routes
+# are still checked. Default: README.md, AGENTS.md, CLAUDE.md at any depth.
+meta = ["README.md", "*/README.md", "AGENTS.md", "*/AGENTS.md", "CLAUDE.md", "*/CLAUDE.md"]
