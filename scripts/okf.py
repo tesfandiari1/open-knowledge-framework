@@ -5,7 +5,7 @@
 # ///
 """okf: keep a folder of Markdown files conformant with the Open Knowledge Format.
 
-    uv run scripts/okf.py check [ROOT] [--all]
+    uv run scripts/okf.py check [ROOT] [--all] [--baseline FILE]
 
 Hard failures (exit 1) are the OKF conformance rules, identical in v0.1 and v0.2:
 every non-reserved .md has parseable frontmatter with a non-empty `type`, and every
@@ -40,6 +40,7 @@ DEFAULTS = {
 }
 INDEX_MAX_BYTES = 4096  # ponytail: fixed cap, move to okf.toml when an adopter needs another value
 ROUTING_FILES = {"agents.md", "claude.md"}
+CONTEXT_MAX_BYTES = 16_000  # ponytail: about 4K tokens, a guess; tune once evals show a better cap
 HARD = ("no-frontmatter", "bad-frontmatter", "no-type", "index-frontmatter", "log-heading", "log-order")
 
 FM = re.compile(r"---[ \t]*\n(.*?)^---[ \t]*$", re.DOTALL | re.MULTILINE)
@@ -47,10 +48,11 @@ FENCE = re.compile(r"^(```|~~~).*?^\1", re.DOTALL | re.MULTILINE)
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 MD_LINK = re.compile(r"\[[^\]]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 WIKI_LINK = re.compile(r"\[\[([^\]|#^]+)")
-ROUTE = re.compile(r"`(/?[\w.+@-]+(?:/[\w.+@-]+)*(?:\.md|/))`")
+ROUTE = re.compile(r"`(/?[\w.+-]+(?:/[\w.+@-]+)*(?:\.md|/))`")
 H2 = re.compile(r"^## +(.*)$", re.MULTILINE)
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
+IMPORT = re.compile(r"(?<![\w`])@(~?[\w.+/-]+)")
 
 
 def load_config(root):
@@ -84,6 +86,31 @@ def frontmatter(text):
     except yaml.YAMLError:
         return None, "bad-frontmatter"
     return (fm, None) if isinstance(fm, dict) else (None, "bad-frontmatter")
+
+
+def always_loaded(root):
+    """Map each file Claude Code loads on every turn to its size in bytes: the root CLAUDE.md,
+    its @imports (up to 4 hops), and .claude/rules files with no `paths:` frontmatter."""
+    sizes, todo = {}, [(os.path.join(root, "CLAUDE.md"), 0)]
+    while todo:
+        path, hops = todo.pop()
+        if path in sizes or not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        sizes[path] = len(text.encode())
+        if hops < 4:
+            body = INLINE_CODE.sub("", FENCE.sub("", text))
+            todo += [(os.path.join(os.path.dirname(path), os.path.expanduser(m)), hops + 1) for m in IMPORT.findall(body)]
+    for dirpath, _, files in os.walk(os.path.join(root, ".claude", "rules")):
+        for name in files:
+            path = os.path.join(dirpath, name)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            fm, _ = frontmatter(text)
+            if name.endswith(".md") and not (fm or {}).get("paths"):
+                sizes[path] = len(text.encode())
+    return sizes
 
 
 def check(root, cfg=None):
@@ -183,6 +210,14 @@ def check(root, cfg=None):
                 if not alive(t, rel):
                     findings.append(("dead-route", rel, t))
 
+    loaded = always_loaded(root)
+    total = sum(loaded.values())
+    stats["context_bytes"] = total
+    if total > CONTEXT_MAX_BYTES:
+        top = ", ".join(f"{os.path.relpath(p, root)} {n:,}" for p, n in sorted(loaded.items(), key=lambda x: -x[1])[:4])
+        detail = (f"{total:,} bytes load on every agent turn (> {CONTEXT_MAX_BYTES:,}): {top}. "
+                  "Scope rules with `paths:` or trim imports.")
+        findings.append(("context-budget", "CLAUDE.md", detail))
     for stem, paths in concept_stems.items():
         if len(paths) > 1:
             findings.append(("duplicate-name", paths[0], f"{stem}.md x{len(paths)}: wikilinks are ambiguous"))
@@ -200,7 +235,8 @@ def report(root, stats, findings, show_all):
         by_code[code].append((rel, detail))
     hard = sum(len(by_code[c]) for c in HARD)
     print(f"okf check {root}: {stats['notes']} notes, {stats['sources']} sources, {stats['meta']} meta, "
-          f"{stats['index']} index.md, {stats['log']} log.md")
+          f"{stats['index']} index.md, {stats['log']} log.md"
+          + (f", {stats['context_bytes']:,} bytes always loaded" if stats["context_bytes"] else ""))
     for label, codes in (("HARD", HARD), ("WARN", sorted(set(by_code) - set(HARD)))):
         rows = [(c, len(by_code[c])) for c in codes if by_code[c]]
         if rows:
@@ -213,7 +249,24 @@ def report(root, stats, findings, show_all):
         if limit and len(items) > limit:
             print(f"  ... {len(items) - limit} more {code} (use --all)")
     print("conformant" if not hard else f"not conformant: {hard} hard failures")
-    return 1 if hard else 0
+    return hard
+
+
+def ratchet(path, hard):
+    """Fail only if hard failures rose above the count stored in `path`. Lower the count when it falls."""
+    try:
+        with open(path) as f:
+            old = int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        old = None
+    if old is not None and hard > old:
+        print(f"okf: hard failures rose from {old} to {hard}. Fix the new ones, or commit with --no-verify.")
+        return 1
+    if hard != old:
+        with open(path, "w") as f:
+            f.write(f"{hard}\n")
+        print(f"okf: baseline {'set to' if old is None else f'lowered from {old} to'} {hard} in {path}")
+    return 0
 
 
 def main(argv=None):
@@ -222,10 +275,13 @@ def main(argv=None):
     c = sub.add_parser("check", help="report conformance failures and warnings")
     c.add_argument("root", nargs="?", default=".")
     c.add_argument("--all", action="store_true", help="list every finding, not the first 20 per code")
+    c.add_argument("--baseline", metavar="FILE",
+                   help="exit 1 only if hard failures rise above the count in FILE, and lower it when they fall")
     a = ap.parse_args(argv)
     root = os.path.abspath(a.root)
     stats, findings = check(root)
-    return report(root, stats, findings, a.all)
+    hard = report(root, stats, findings, a.all)
+    return ratchet(a.baseline, hard) if a.baseline else int(hard > 0)
 
 
 if __name__ == "__main__":

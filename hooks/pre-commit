@@ -1,0 +1,22 @@
+#!/bin/sh
+# okf pre-commit: block a commit only when it adds OKF hard failures (a ratchet).
+# Old failures never block you, and the count stored in .okf-baseline only goes down.
+# Install from your knowledge-base repo root:
+#   ln -s "$OKF_HOME/hooks/pre-commit" .git/hooks/pre-commit
+# Skip once with: git commit --no-verify
+# ponytail: checks the working tree, not only staged content. Use `git stash -k` first if that matters.
+OKF="${OKF_HOME:-$HOME/code/okf}"
+if out=$(uv run -q "$OKF/scripts/okf.py" check . --all --baseline .okf-baseline 2>&1); then
+  printf '%s\n' "$out" | grep '^okf: baseline' && git add .okf-baseline
+  exit 0
+fi
+printf '%s\n' "$out" | tail -1
+staged=$(git diff --cached --name-only)
+echo "Hard failures in staged files:"
+printf '%s\n' "$out" | grep -E '^  .*: (no-frontmatter|bad-frontmatter|no-type|index-frontmatter|log-heading|log-order)' |
+while IFS= read -r line; do
+  f=${line#  }
+  f=${f%%: *}
+  printf '%s\n' "$staged" | grep -qxF -- "$f" && echo "$line"
+done
+exit 1

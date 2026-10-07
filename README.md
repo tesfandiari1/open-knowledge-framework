@@ -85,8 +85,15 @@ Hard failures are the OKF conformance rules, which are the same in v0.1 and v0.2
 - ambiguous duplicate names
 - index files over 4 KB
 - inbox files that no note links to yet
+- agent instructions that load on every turn (`CLAUDE.md`, its `@imports`, and unscoped `.claude/rules`) over 16 KB, about 4,000 tokens
 
 Output lists at most 20 findings per kind (`--all` lists every one). To tell the checker which folders hold sources, inbox material or files to skip, copy `okf.toml.example` to your root as `okf.toml`. Test: `uv run tests/test_okf.py`.
+
+**Stop new damage without fixing the old first.** The pre-commit hook blocks a commit only when it adds hard failures. It stores the current count in `.okf-baseline`, and that count only goes down:
+
+```bash
+cd ~/my-notes && ln -s ~/code/okf/hooks/pre-commit .git/hooks/pre-commit   # set OKF_HOME if okf lives elsewhere
+```
 
 ## What's in the repo
 

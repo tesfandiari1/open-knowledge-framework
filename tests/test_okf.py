@@ -4,10 +4,14 @@
 # dependencies = ["pyyaml>=6"]
 # ///
 """Fixture test for scripts/okf.py. Run: uv run tests/test_okf.py"""
+import contextlib
 import importlib.util
+import io
 import os
+import subprocess
 import tempfile
 from collections import Counter
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("okf", os.path.join(os.path.dirname(__file__), "..", "scripts", "okf.py"))
 okf = importlib.util.module_from_spec(spec)
@@ -64,4 +68,44 @@ expected = {
     "unprocessed": 1,          # raw/2026-01-02-call.md is in the inbox and nothing links to it
 }
 assert dict(c) == expected, dict(c)
+
+# Context budget: CLAUDE.md, its @imports, and unscoped rules count. Scoped rules do not.
+c = codes(bundle({
+    "CLAUDE.md": "Rules. @docs/big.md and `@ignored.md` and mail me@example.com\n",
+    "docs/big.md": "---\ntype: Reference\ndescription: Big.\n---\n" + "x" * 9000,
+    ".claude/rules/general.md": "y" * 8000,
+    ".claude/rules/scoped.md": "---\npaths: [\"docs/*\"]\n---\n" + "z" * 50000,
+}))
+assert c == Counter({"context-budget": 1}), c
+assert okf.always_loaded(bundle({"CLAUDE.md": "small"})) and not codes(bundle({"CLAUDE.md": "small"}))
+
+# Ratchet: set the baseline, fail when hard failures rise, lower it when they fall.
+root = bundle({"a.md": "---\ntype: Concept\n---\n"})
+base = os.path.join(root, ".okf-baseline")
+quiet = lambda: contextlib.redirect_stdout(io.StringIO())
+with quiet():
+    assert okf.main(["check", root, "--baseline", base]) == 0 and Path(base).read_text() == "0\n"
+    Path(os.path.join(root, "b.md")).write_text("no frontmatter\n")
+    assert okf.main(["check", root, "--baseline", base]) == 1 and Path(base).read_text() == "0\n"
+    Path(base).write_text("5\n")
+    assert okf.main(["check", root, "--baseline", base]) == 0 and Path(base).read_text() == "1\n"
+
+# The real pre-commit hook in a throwaway git repo.
+repo = bundle({"good.md": "---\ntype: Concept\n---\n"})
+env = {**os.environ, "OKF_HOME": os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))}
+git = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                cwd=repo, env=env, capture_output=True, text=True, check=False)
+git("init", "-q")
+os.symlink(os.path.join(env["OKF_HOME"], "hooks", "pre-commit"), os.path.join(repo, ".git", "hooks", "pre-commit"))
+git("add", "good.md")
+assert git("commit", "-qm", "first").returncode == 0
+assert git("show", "HEAD:.okf-baseline").stdout == "0\n", "baseline committed with the first commit"
+Path(os.path.join(repo, "bad.md")).write_text("no frontmatter\n")
+git("add", "bad.md")
+r = git("commit", "-qm", "bad")
+assert r.returncode == 1 and "bad.md: no-frontmatter" in r.stdout + r.stderr, r.stdout + r.stderr
+assert git("commit", "-qm", "bad", "--no-verify").returncode == 0
+Path(os.path.join(repo, "bad.md")).write_text("---\ntype: Concept\n---\n")
+git("add", "bad.md")
+assert git("commit", "-qm", "fixed").returncode == 0
 print("ok")
