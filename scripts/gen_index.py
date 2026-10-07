@@ -42,7 +42,7 @@ def main():
         d = read_fm(f)
         rel = os.path.relpath(f, site_dir)
         groups[d.get("section", "root")].append((rel, d.get("title", rel), d.get("description", "")))
-        date = date or d.get("scraped_date", "")
+        date = max(date, d.get("scraped_date", ""))  # the latest fetch
         host = host or d.get("site_host", "")
     n = sum(len(v) for v in groups.values())
     out = [f"# {title} — Index", "",

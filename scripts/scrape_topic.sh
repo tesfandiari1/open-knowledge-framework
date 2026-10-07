@@ -6,7 +6,7 @@
 # Pipeline per site (reuses scrape_urls.sh + firecrawl_to_md.py + gen_index.py):
 #   firecrawl map  -> raw/<site>.urls.txt   (pauses for hand-edit if newly created)
 #   scrape_urls.sh -> .firecrawl/raw-<slug>-<site>/*.json
-#   firecrawl_to_md.py -> raw/<site>/*.md
+#   firecrawl_to_md.py -> raw/<site>/*.md   (only listed URLs; removes pages of dropped ones)
 #   gen_index.py   -> raw/<site>/CONTENTS.md
 set -euo pipefail
 
@@ -17,7 +17,6 @@ topic="$KB/topics/$slug"
 mkdir -p "$KB/.firecrawl"
 sources="$topic/raw/SOURCES.md"
 [ -f "$sources" ] || { echo "no SOURCES.md at $sources" >&2; exit 1; }
-date="$(date +%Y-%m-%d)"
 
 # Extract the fenced ```sources block; drop full-line comments and blank lines.
 # (Only whole-line `#` comments — never strip inline `#`, which can appear in a
@@ -39,7 +38,7 @@ while IFS=$'\t' read -r site map_url base_tags extra; do
   rawjson="$KB/.firecrawl/raw-$slug-$site"
   echo "=== $slug / $site  ($map_url) ==="
 
-  if [ ! -s "$urls" ]; then
+  if ! grep -q '[^[:space:]]' "$urls" 2>/dev/null; then  # no URLs yet: map the site
     map_json="$KB/.firecrawl/$slug-$site-map.json"
     firecrawl map "$map_url" --limit 1000 --json -o "$map_json"
     jq -r '.data.links[].url' "$map_json" | sort -u > "$urls"
@@ -55,9 +54,9 @@ while IFS=$'\t' read -r site map_url base_tags extra; do
   # backslashes preserved). eval runs trusted local config; treat SOURCES.md as code.
   eval "extra_args=(${extra:-})"
   python3 "$SCRIPTS_DIR/firecrawl_to_md.py" \
-    --raw-dir "$rawjson" --out-dir "$topic/raw/$site" \
+    --urls "$urls" --raw-dir "$rawjson" --out-dir "$topic/raw/$site" \
     --site "$site" --base-url "$origin" --base-tags "$base_tags" \
-    --scraped-date "$date" "${extra_args[@]+"${extra_args[@]}"}"
+    "${extra_args[@]+"${extra_args[@]}"}"
   python3 "$SCRIPTS_DIR/gen_index.py" "$topic/raw/$site" "$site"
 done <<< "$rows"
 

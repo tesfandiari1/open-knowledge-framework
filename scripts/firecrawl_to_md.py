@@ -2,13 +2,19 @@
 """Transform Firecrawl scrape JSON into knowledgebase markdown with rich frontmatter.
 
 Usage:
-    firecrawl_to_md.py --raw-dir <dir> --out-dir <dir> --site <slug> \
-        --base-url <url> --scraped-date <YYYY-MM-DD>
+    firecrawl_to_md.py --urls <site>.urls.txt --raw-dir <dir> --out-dir <dir> \
+        --site <slug> --base-url <url>
 
-Reads every *.json in --raw-dir (each a Firecrawl scrape result with top-level
-keys: markdown, metadata, links), and writes one .md per page under --out-dir,
-mirroring the URL path. Pages whose path is also a parent of other pages are
-written as <path>/index.md to avoid file/dir collisions.
+For each URL in --urls, reads its cached JSON in --raw-dir (a Firecrawl scrape
+result with top-level keys: markdown, metadata, links), and writes one .md per page
+under --out-dir, mirroring the URL path. Pages whose path is also a parent of other
+pages are written as <path>/index.md to avoid file/dir collisions. scraped_date is
+the UTC day the JSON was fetched (its mtime).
+
+After a clean run, where every listed URL converted, it removes each .md this converter
+wrote earlier for --site that this run did not write, because its URL left the list.
+If any listed URL did not convert, it removes nothing. Files without this site's
+frontmatter, such as CONTENTS.md or a hand-added note, stay.
 """
 import argparse
 import glob
@@ -16,7 +22,14 @@ import json
 import os
 import re
 import sys
+import time
 from urllib.parse import urlparse
+
+
+def cache_name(url: str) -> str:
+    """The JSON filename scrape_urls.sh gives a URL. Must match its slug()."""
+    s = re.sub(r"^https?://[^/]+", "", url).removeprefix("/").replace("/", "__")
+    return (re.sub(r"[^A-Za-z0-9._-]", "_", s) or "index") + ".json"
 
 
 def strip_leading_doc_index_blockquote(md: str) -> str:
@@ -82,18 +95,12 @@ def clean_markdown(md: str, cut_re=None) -> str:
         if m:
             out.append(f"{m.group(1)} {m.group(2).strip()}")
             continue
-        # Collapse a heading wrapped in a self-anchor link back to plain text:
-        #   ## [System Dependencies](https://...#...)  ->  ## System Dependencies
-        m = re.match(r"^(#{1,6})\s+\[(.+?)\]\((?:https?://|#)[^)]*\)\s*$", line)
-        if m:
-            out.append(f"{m.group(1)} {m.group(2)}")
-            continue
-        # Strip a trailing [anchor](url) glued onto heading text (Adobe style):
+        # Strip a trailing [anchor](url#frag) after heading text (Adobe, Sphinx ¶):
         #   ## Premiere Pro v26.2.0[premiere-pro-v2620](https://...#...)  ->  ## Premiere Pro v26.2.0
-        m = re.match(r"^(#{1,6}\s+.*?)\[[^\]]+\]\((?:https?://|#)[^)]*\)\s*$", line)
-        if m:
-            out.append(m.group(1).rstrip())
-            continue
+        line = re.sub(r"^(#{1,6}\s+.*?\S)\s*\[[^\]]+\]\((?:https?://[^)#]*)?#[^)]*\)\s*$", r"\1", line)
+        # Then collapse a heading wrapped in a self-anchor link back to plain text:
+        #   ## [System Dependencies](https://...#...)  ->  ## System Dependencies
+        line = re.sub(r"^(#{1,6})\s+\[((?:\[[^\]]*\]|[^\]])+)\]\((?:https?://|#)[^)]*\)\s*$", r"\1 \2", line)
         out.append(line)
     text = "\n".join(out)
     # docs.rs glues "Copy item path" onto the rustdoc title heading
@@ -137,11 +144,11 @@ def yaml_escape(s: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--urls", required=True, help="the site's .urls.txt: only these pages are kept")
     ap.add_argument("--raw-dir", required=True)
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--site", required=True)
     ap.add_argument("--base-url", required=True)
-    ap.add_argument("--scraped-date", required=True)
     ap.add_argument("--strip-title-suffix", default="",
                     help="regex stripped from the end of each title (e.g. '\\s*\\|\\s*Tauri\\s*$')")
     ap.add_argument("--base-tags", default="",
@@ -159,20 +166,29 @@ def main():
 
     base_host = urlparse(args.base_url).netloc
 
-    # First pass: collect (relpath, record) for every page
-    records = []
-    for jf in sorted(glob.glob(os.path.join(args.raw_dir, "*.json"))):
+    # First pass: collect (relpath, record) for every listed page
+    records, missed = [], 0  # missed: listed URLs that did not convert, which blocks the prune
+    with open(args.urls) as f:
+        urls = [u.strip() for u in f if u.strip()]
+    for url in urls:
+        jf = os.path.join(args.raw_dir, cache_name(url))
+        if not os.path.exists(jf):
+            print(f"  ! skip (not scraped): {url}", file=sys.stderr)
+            missed += 1
+            continue
         with open(jf) as f:
             data = json.load(f)
         meta = data.get("metadata") or {}
         md = data.get("markdown") or ""
         if not md.strip():
             print(f"  ! skip (empty markdown): {jf}", file=sys.stderr)
+            missed += 1
             continue
         title_meta = (meta.get("ogTitle") or meta.get("title") or "")
         if args.skip_404 and (re.search(r"\b404\b|Page not found", title_meta)
                               or re.search(r"Error 404: Page not found", md)):
             print(f"  ! skip (404): {jf}", file=sys.stderr)
+            missed += 1
             continue
         src = meta.get("sourceURL") or meta.get("url") or ""
         path = urlparse(src).path
@@ -182,7 +198,8 @@ def main():
         # drop a trailing .html so docs.rs items become clean .md names
         path = path.removesuffix(".html")
         rel = path if path else "index"
-        records.append({"rel": rel, "meta": meta, "md": md, "src": src})
+        fetched = time.strftime("%Y-%m-%d", time.gmtime(os.path.getmtime(jf)))
+        records.append({"rel": rel, "meta": meta, "md": md, "src": src, "date": fetched})
 
     # Determine which rel-paths are also parents of others -> need index.md
     all_rels = {r["rel"] for r in records}
@@ -192,7 +209,7 @@ def main():
         for i in range(1, len(parts)):
             parents.add("/".join(parts[:i]))
 
-    written = 0
+    written = set()  # inodes, so a case-insensitive disk still matches each page
     for r in records:
         rel = r["rel"]
         meta = r["meta"]
@@ -234,17 +251,32 @@ def main():
         fm.append(f"section: {yaml_escape(section)}")
         fm.append("tags: [" + ", ".join(yaml_escape(t) for t in tags) + "]")
         fm.append(f"language: {yaml_escape(meta.get('language') or 'en')}")
-        fm.append(f"scraped_date: {args.scraped_date}")
+        fm.append(f"scraped_date: {r['date']}")
         fm.append("---")
         fm.append("")
 
         with open(out_path, "w") as f:
             f.write("\n".join(fm))
             f.write(md)
-        written += 1
+        written.add(os.stat(out_path).st_ino)
         print(f"  + {out_rel}")
 
-    print(f"\nWrote {written} markdown files to {args.out_dir}")
+    # After a clean run, remove pages this converter wrote earlier for this site but not this run.
+    # Only frontmatter with this site's converter lines marks a file as ours.
+    # ponytail: one listed URL that keeps failing blocks the prune for its site. Drop it from the list.
+    if missed or not urls:
+        print(f"  kept old pages: {missed} listed URL(s) did not convert" if missed else "  kept old pages: no URLs listed")
+    ours = f"\nsite: {yaml_escape(args.site)}\n"
+    for p in [] if missed or not urls else glob.glob(os.path.join(args.out_dir, "**", "*.md"), recursive=True):
+        if os.stat(p).st_ino in written:
+            continue
+        with open(p) as f:
+            fm = f.read().split("\n---\n", 1)[0]
+        if fm.startswith("---\n") and ours in fm and "\nsource_url: " in fm:
+            os.remove(p)
+            print(f"  - {os.path.relpath(p, args.out_dir)}")
+
+    print(f"\nWrote {len(written)} markdown files to {args.out_dir}")
 
 
 if __name__ == "__main__":

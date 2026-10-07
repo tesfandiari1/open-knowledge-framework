@@ -220,9 +220,10 @@ hold thousands of files, so do not load sources wholesale.
 3. Look at existing notes first. A note filed by an earlier query can already hold the
    answer.
 4. Read only the files that matter. Follow their links. Stop when you can answer.
-5. Answer in the form that fits: prose, a table, or code. End with a list of citations:
-   the files you used. Write each one as its full path from the root, for example
-   `guides/deploy/rollback.md`. Do not shorten paths under a shared prefix.
+5. Answer in the form that fits: prose, a table, or code. Write every file path in the
+   answer as its full path from the root, for example `guides/deploy/rollback.md`. This
+   includes inline mentions and line references. Do not shorten a path after its first
+   mention. End with a list of citations: the files you used.
 
 - Every claim traces to a file you read. If no file supports a claim, say so. Never
   invent a citation.

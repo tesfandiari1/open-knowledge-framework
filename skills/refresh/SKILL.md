@@ -46,7 +46,8 @@ slug=<topic>
   echo "$(sed '/^scraped_date:/d' "$f" | shasum | cut -c1-12) $f"
 done) > "$KB/.firecrawl/okf-refresh-$slug-before.txt"
 ```
-The hash skips the `scraped_date` line, because that line changes on every run.
+The hash skips the `scraped_date` line. That line holds the fetch date. Refresh
+fetches every page again, so the line changes on every page.
 (`.firecrawl/` is the KB's gitignored cache — scoped per-KB and per-slug, so no
 `/tmp` collisions and nothing to clean from git.)
 
@@ -57,6 +58,7 @@ rm -f "$KB/topics/$slug/raw/"*.urls.txt   # next run re-runs `firecrawl map`
 ```
 Skip this to just re-pull the already-curated URL set. If you re-map, **re-curate**
 the regenerated `.urls.txt` before continuing (drop translations/blog/auto-gen dumps).
+The next run removes the page of each URL that the curated file leaves out.
 
 ### Step 4 — Re-scrape + re-index
 ```bash
@@ -81,7 +83,9 @@ diff "$KB/.firecrawl/okf-refresh-$slug-before.txt" \
      "$KB/.firecrawl/okf-refresh-$slug-after.txt" || true
 ```
 A page only on a `>` line was added. A page only on a `<` line was removed. A page on
-both was changed. The after file has one line per page, so `wc -l` on it gives the
+both was changed. A clean run removes the page of each URL that left `<site>.urls.txt`.
+If any listed URL fails, comes back empty, or (with `--skip-404`) comes back as a 404,
+the run keeps every old page and prints `kept old pages`. The after file has one line per page, so `wc -l` on it gives the
 total. Optional: if the KB is a git repo, `git -C "$KB" status --short
 "topics/$slug/raw"` shows the same pages.
 
@@ -108,6 +112,10 @@ pages that may need review. If the KB is a git repo, suggest a commit.
 - **`no such topic`** — list `topics/` in the KB; the user may mean a different slug,
   or this should be okf:topic.
 - **Nothing changed** — expected when the source is stable; report "no changes".
-- **Many pages removed** — the source may have restructured URLs; check the
-  `.urls.txt` against a fresh `firecrawl map` before trusting the delta.
+- **Many pages removed** — their URLs left `<site>.urls.txt` (often in a re-map).
+  Compare the `.urls.txt` with a fresh
+  `firecrawl map`. The cached JSON stays, so put a URL back and run `scrape_topic.sh`
+  without `OKF_RESCRAPE` to restore its page at no credit cost.
+- **`kept old pages`** — a listed URL did not convert, so nothing was removed. Fix or
+  drop that URL, then run again.
 - **Conformance worries after refresh** — run okf:okf.

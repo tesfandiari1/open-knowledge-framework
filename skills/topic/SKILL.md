@@ -102,6 +102,13 @@ frontmattered, auto-cleaned Markdown under `raw/<site>/`, and regenerates each s
 `CONTENTS.md`. Because the JSON is cached, a plain re-run only rebuilds the Markdown
 from the local cache for **free** (no re-scrape). `OKF_RESCRAPE=1` fetches every URL again.
 
+Each run converts only the URLs in `<site>.urls.txt`. Drop a URL from that file and the
+next clean run removes its page. If any listed URL fails to convert, the run removes
+nothing and says so. The run removes only pages it wrote (frontmatter with this `site`
+and a `source_url`), so `CONTENTS.md` and your own notes stay. A copy of a scraped page
+counts as a scraped page: delete its `site:` line to keep it. Each page's `scraped_date`
+is the UTC day Firecrawl fetched it, so a rebuild from the cache keeps it.
+
 ### Step 6 — Refresh the light wiki (mechanical, ~free)
 Update `topics/<slug>/wiki/index.md` so its `# Sources` section links each scraped
 site's `../raw/<site>/CONTENTS.md` with a one-line description. Then add an
